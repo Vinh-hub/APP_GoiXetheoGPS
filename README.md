@@ -1,9 +1,5 @@
 # APP_GoiXetheoGPS
 
-Dưới đây là **README chuẩn đồ án 9–10 điểm** (viết theo format mà giảng viên thường yêu cầu: giới thiệu → mục tiêu → kiến trúc → thiết kế → triển khai → test → kết luận). Bạn có thể đặt tên file **`README.md`** trong GitHub.
-
----
-
 # 🚖 Distributed Ride-Hailing Database System
 
 ### (Database Distributed + Replication + Failover)
@@ -451,12 +447,3 @@ Giải pháp này phù hợp với các hệ thống:
 
 ---
 
-✅ Nếu bạn muốn, tôi có thể **nâng README này lên level “đồ án xuất sắc”** bằng cách thêm:
-
-* **ERD chuẩn 12 bảng (hình vẽ)**
-* **Kiến trúc Deployment Diagram**
-* **Sequence Diagram**
-* **Replication Script**
-* **Failover code**
-
-để README nhìn **giống project production trên GitHub (rất dễ được 9–10 điểm)**.
