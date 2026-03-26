@@ -1,6 +1,6 @@
 # APP_GoiXetheoGPS
 
-# 🚖 Distributed Ride-Hailing Database System
+# Distributed Ride-Hailing Database System
 
 ### (Database Distributed + Replication + Failover)
 
