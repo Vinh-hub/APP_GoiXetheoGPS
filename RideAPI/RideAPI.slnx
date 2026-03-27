@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../APP_GoiXetheoGPS/APP_GoiXetheoGPS.csproj">
+    <Deploy Solution="Debug|*" />
+  </Project>
+  <Project Path="RideAPI/RideAPI.csproj" />
+</Solution>
