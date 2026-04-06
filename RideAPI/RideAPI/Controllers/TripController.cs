@@ -20,29 +20,33 @@ namespace RideAPI.Controllers
         [HttpPost("request")]
         public IActionResult RequestTrip([FromBody] TripRequestDto request)
         {
-            var result = _tripService.RequestTrip(request);
-            return Ok(result);
+            _tripService.RequestTrip(request);
+            return Ok("Trip created");
         }
 
         [HttpGet("{id}")]
         public IActionResult GetTrip(int id, [FromQuery] double latitude)
         {
-            var result = _tripService.GetTrip(id, latitude);
-            return Ok(result);
+            var trip = _tripService.GetTrip(id, latitude);
+
+            if (trip == null)
+                return NotFound("Trip not found");
+
+            return Ok(trip);
         }
 
         [HttpPost("accept")]
         public IActionResult AcceptTrip([FromBody] AcceptTripDto request)
         {
-            var result = _tripService.AcceptTrip(request);
-            return Ok(result);
+            _tripService.AcceptTrip(request);
+            return Ok("Trip accepted");
         }
 
         [HttpPost("complete")]
         public IActionResult CompleteTrip([FromBody] CompleteTripDto request)
         {
-            var result = _tripService.CompleteTrip(request);
-            return Ok(result);
+            _tripService.CompleteTrip(request);
+            return Ok("Trip completed");
         }
     }
 }

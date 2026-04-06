@@ -1,58 +1,90 @@
-﻿using RideAPI.Models;
+﻿using MySqlConnector;
+using RideAPI.Models;
 
 namespace RideAPI.Services
 {
     public class TripService
     {
-        public object RequestTrip(TripRequestDto request)
+        private readonly DatabaseService db = new DatabaseService();
+
+        public void RequestTrip(TripRequestDto request)
         {
-            return new
+            using var conn = db.GetConnection(request.Latitude);
+            conn.Open();
+
+            var sql = @"INSERT INTO Trips (UserID, DriverID, Status, Price, Latitude, CreatedAt)
+                        VALUES (@userId, NULL, @status, @price, @latitude, NOW())";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@userId", request.UserID);
+            cmd.Parameters.AddWithValue("@status", "Requested");
+            cmd.Parameters.AddWithValue("@price", request.Price);
+            cmd.Parameters.AddWithValue("@latitude", request.Latitude);
+
+            cmd.ExecuteNonQuery();
+        }
+
+        public Trip? GetTrip(int id, double latitude)
+        {
+            using var conn = db.GetConnection(latitude);
+            conn.Open();
+
+            var sql = @"SELECT TripID, UserID, DriverID, Status, Price, Latitude, CreatedAt
+                        FROM Trips
+                        WHERE TripID = @tripId";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@tripId", id);
+
+            using var reader = cmd.ExecuteReader();
+
+            if (reader.Read())
             {
-                message = "Trip requested successfully",
-                trip = new
+                return new Trip
                 {
-                    userID = request.UserID,
-                    latitude = request.Latitude,
-                    longitude = request.Longitude,
-                    pickupAddress = request.PickupAddress,
-                    destinationAddress = request.DestinationAddress,
-                    price = request.Price,
-                    status = "Requested"
-                }
-            };
+                    TripID = reader.GetInt32("TripID"),
+                    UserID = reader.GetInt32("UserID"),
+                    DriverID = reader.IsDBNull(reader.GetOrdinal("DriverID")) ? 0 : reader.GetInt32("DriverID"),
+                    Status = reader.GetString("Status"),
+                    Price = reader.GetDecimal("Price"),
+                    Latitude = reader.GetDouble("Latitude"),
+                    CreatedAt = reader.GetDateTime("CreatedAt")
+                };
+            }
+
+            return null;
         }
 
-        public object GetTrip(int id, double latitude)
+        public void AcceptTrip(AcceptTripDto request)
         {
-            return new
-            {
-                tripID = id,
-                latitude = latitude,
-                status = "Requested",
-                message = "Trip details fetched successfully"
-            };
+            using var conn = db.GetConnection(request.Latitude);
+            conn.Open();
+
+            var sql = @"UPDATE Trips
+                        SET DriverID = @driverId, Status = 'Accepted'
+                        WHERE TripID = @tripId";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@driverId", request.DriverID);
+            cmd.Parameters.AddWithValue("@tripId", request.TripID);
+
+            cmd.ExecuteNonQuery();
         }
 
-        public object AcceptTrip(AcceptTripDto request)
+        public void CompleteTrip(CompleteTripDto request)
         {
-            return new
-            {
-                message = "Trip accepted successfully",
-                tripID = request.TripID,
-                driverID = request.DriverID,
-                status = "Accepted"
-            };
-        }
+            using var conn = db.GetConnection(request.Latitude);
+            conn.Open();
 
-        public object CompleteTrip(CompleteTripDto request)
-        {
-            return new
-            {
-                message = "Trip completed successfully",
-                tripID = request.TripID,
-                finalPrice = request.FinalPrice,
-                status = "Completed"
-            };
+            var sql = @"UPDATE Trips
+                        SET Status = 'Completed', Price = @finalPrice
+                        WHERE TripID = @tripId";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@finalPrice", request.FinalPrice);
+            cmd.Parameters.AddWithValue("@tripId", request.TripID);
+
+            cmd.ExecuteNonQuery();
         }
     }
 }
