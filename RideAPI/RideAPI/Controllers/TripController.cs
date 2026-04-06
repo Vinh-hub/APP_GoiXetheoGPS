@@ -10,13 +10,39 @@ namespace RideAPI.Controllers
     [Authorize]
     public class TripController : ControllerBase
     {
-        TripService service = new TripService();
+        private readonly TripService _tripService;
 
-        [HttpPost]
-        public IActionResult BookTrip(Trip trip)
+        public TripController(TripService tripService)
         {
-            service.BookTrip(trip);
-            return Ok("Trip created");
+            _tripService = tripService;
+        }
+
+        [HttpPost("request")]
+        public IActionResult RequestTrip([FromBody] TripRequestDto request)
+        {
+            var result = _tripService.RequestTrip(request);
+            return Ok(result);
+        }
+
+        [HttpGet("{id}")]
+        public IActionResult GetTrip(int id, [FromQuery] double latitude)
+        {
+            var result = _tripService.GetTrip(id, latitude);
+            return Ok(result);
+        }
+
+        [HttpPost("accept")]
+        public IActionResult AcceptTrip([FromBody] AcceptTripDto request)
+        {
+            var result = _tripService.AcceptTrip(request);
+            return Ok(result);
+        }
+
+        [HttpPost("complete")]
+        public IActionResult CompleteTrip([FromBody] CompleteTripDto request)
+        {
+            var result = _tripService.CompleteTrip(request);
+            return Ok(result);
         }
     }
 }
