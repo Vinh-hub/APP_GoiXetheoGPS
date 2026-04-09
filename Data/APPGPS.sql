@@ -35,7 +35,10 @@ CREATE TABLE Users (
     CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (RegionID) REFERENCES Regions(RegionID),
     FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
-    UNIQUE KEY UQ_Users_Email (Email),
+    UNIQUE KEY UQ_North_Users_Email (Email),
+    -- 1-1: 1 Customer/Driver chỉ gắn tối đa 1 tài khoản Users
+    UNIQUE KEY UQ_North_Users_CustomerID (CustomerID),
+    UNIQUE KEY UQ_North_Users_DriverID (DriverID),
     -- Mỗi user chỉ thuộc đúng 1 loại (Customer hoặc Driver)
     CHECK (
         (Role='Customer' AND CustomerID IS NOT NULL AND DriverID IS NULL) OR
@@ -54,7 +57,7 @@ CREATE TABLE Drivers (
 );
 
 ALTER TABLE Users
-ADD CONSTRAINT FK_Users_Drivers
+ADD CONSTRAINT FK_North_Users_Drivers
 FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID);
 
 CREATE TABLE Vehicles (
@@ -201,7 +204,10 @@ CREATE TABLE Users (
     CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (RegionID) REFERENCES Regions(RegionID),
     FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
-    UNIQUE KEY UQ_Users_Email (Email),
+    UNIQUE KEY UQ_South_Users_Email (Email),
+    -- 1-1: 1 Customer/Driver chỉ gắn tối đa 1 tài khoản Users
+    UNIQUE KEY UQ_South_Users_CustomerID (CustomerID),
+    UNIQUE KEY UQ_South_Users_DriverID (DriverID),
     CHECK (
         (Role='Customer' AND CustomerID IS NOT NULL AND DriverID IS NULL) OR
         (Role='Driver' AND DriverID IS NOT NULL AND CustomerID IS NULL)
@@ -219,7 +225,7 @@ CREATE TABLE Drivers (
 );
 
 ALTER TABLE Users
-ADD CONSTRAINT FK_Users_Drivers
+ADD CONSTRAINT FK_South_Users_Drivers
 FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID);
 
 CREATE TABLE Vehicles (

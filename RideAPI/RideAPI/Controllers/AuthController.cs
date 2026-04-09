@@ -35,7 +35,9 @@ namespace RideAPI.Controllers
         /// Users là bảng "tài khoản", liên kết 1-1 tới Customers hoặc Drivers.
         /// </summary>
         [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        public async Task<IActionResult> Login(
+            [FromHeader(Name = "X-User-Latitude")] double? userLatitude,
+            [FromBody] LoginRequest request)
         {
             // Bước 1: Kiểm tra người dùng có nhập đủ thông tin chưa
             if (string.IsNullOrWhiteSpace(request.Email) ||
@@ -45,7 +47,7 @@ namespace RideAPI.Controllers
             // Bước 2: Đọc vĩ độ từ header để xác định kết nối DB nào
             //   > 16  → NorthDB (Hà Nội và các tỉnh miền Bắc)
             //   <= 16 → SouthDB (TP.HCM và các tỉnh miền Nam)
-            double lat = GetLatitude();
+            double lat = GetLatitude(userLatitude);
 
             try
             {
@@ -138,7 +140,9 @@ namespace RideAPI.Controllers
         /// Luồng tạo dữ liệu: Customers (profile) -> Users (account).
         /// </summary>
         [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
+        public async Task<IActionResult> Register(
+            [FromHeader(Name = "X-User-Latitude")] double? userLatitude,
+            [FromBody] RegisterRequest request)
         {
             // Bước 1: Kiểm tra người dùng có nhập đủ thông tin bắt buộc chưa
             if (string.IsNullOrWhiteSpace(request.Name) ||
@@ -149,7 +153,7 @@ namespace RideAPI.Controllers
             // Bước 2: Đọc vĩ độ từ header → xác định user thuộc vùng nào
             //   > 16  → RegionID = 1 (Miền Bắc) → lưu vào NorthDB
             //   <= 16 → RegionID = 2 (Miền Nam)  → lưu vào SouthDB
-            double lat = GetLatitude();
+            double lat = GetLatitude(userLatitude);
             int regionId = lat > 16 ? 1 : 2;
 
             try
@@ -233,8 +237,11 @@ namespace RideAPI.Controllers
         // HELPER 1: LẤY VĨ ĐỘ TỪ HEADER
         // Đọc header "X-User-Latitude" từ request gửi lên
         // Nếu không có header → dùng mặc định 10.8 (TP.HCM, miền Nam)
-        private double GetLatitude()
+        private double GetLatitude(double? userLatitude)
         {
+            if (userLatitude is double latFromParam)
+                return latFromParam;
+
             if (Request.Headers.TryGetValue("X-User-Latitude", out var val) &&
                 double.TryParse(val, System.Globalization.NumberStyles.Float,
                                 System.Globalization.CultureInfo.InvariantCulture, out var lat))
