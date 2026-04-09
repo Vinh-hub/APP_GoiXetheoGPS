@@ -4,6 +4,8 @@
 <dict>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Ứng dụng cần quyền vị trí để chọn điểm đón/đến theo vị trí hiện tại.</string>
 	<key>UIDeviceFamily</key>
 	<array>
 		<integer>1</integer>

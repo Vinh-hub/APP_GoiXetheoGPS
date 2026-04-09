@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="APP_GoiXetheoGPS.Pages.HomeMapPage"
+             Title="Bản đồ">
+
+    <Grid>
+        <HybridWebView x:Name="MapHybrid"
+                       HybridRoot="wwwroot"
+                       DefaultFile="mapbox-home.html"
+                       RawMessageReceived="MapHybrid_OnRawMessageReceived" />
+
+        <!-- Floating "current location" button (draggable vertically + tappable) -->
+        <Button x:Name="GpsButton"
+                Text="GPS"
+                WidthRequest="44"
+                HeightRequest="44"
+                CornerRadius="22"
+                Padding="0"
+                Margin="12,72,0,0"
+                HorizontalOptions="Start"
+                VerticalOptions="Start"
+                FontSize="12"
+                FontAttributes="Bold"
+                BackgroundColor="{AppThemeBinding Light=#F8FFFFFF, Dark=#F82A2A2A}"
+                TextColor="{AppThemeBinding Light=#111111, Dark=#FFFFFF}">
+            <Button.GestureRecognizers>
+                <PanGestureRecognizer PanUpdated="GpsButton_OnPanUpdated" />
+                <TapGestureRecognizer Tapped="GpsButton_OnTapped" />
+            </Button.GestureRecognizers>
+        </Button>
+
+        <!-- Bottom sheet (like the mock) -->
+        <Border Margin="12,0,12,16"
+                VerticalOptions="End"
+                StrokeThickness="0"
+                Padding="14,14"
+                BackgroundColor="{AppThemeBinding Light=#F8FFFFFF, Dark=#F81A1A1A}">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="18" />
+            </Border.StrokeShape>
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,6" Radius="18" Opacity="0.18" />
+            </Border.Shadow>
+
+            <VerticalStackLayout Spacing="12">
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                    <Button x:Name="BtnPickup"
+                            Text="Điểm đón"
+                            Clicked="BtnPickup_OnClicked"
+                            CornerRadius="14"
+                            Padding="12,10"
+                            Grid.Column="0" />
+                    <Button x:Name="BtnDropoff"
+                            Text="Điểm đến"
+                            Clicked="BtnDropoff_OnClicked"
+                            CornerRadius="14"
+                            Padding="12,10"
+                            Grid.Column="1" />
+                </Grid>
+
+                <!-- Type to search locations -->
+                <VerticalStackLayout Spacing="8">
+                    <Border x:Name="PickupEntryContainer"
+                            Stroke="{AppThemeBinding Light=#1A000000, Dark=#22FFFFFF}"
+                            StrokeThickness="1"
+                            BackgroundColor="{AppThemeBinding Light=#FFFFFFFF, Dark=#FF222228}"
+                            Padding="12,10">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="14" />
+                        </Border.StrokeShape>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Label Text="●"
+                                   FontSize="18"
+                                   TextColor="#16a34a"
+                                   VerticalOptions="Center" />
+                            <Entry x:Name="PickupEntry"
+                                   Grid.Column="1"
+                                   Placeholder="Nhập điểm đón"
+                                   ClearButtonVisibility="WhileEditing"
+                                   TextChanged="PickupEntry_OnTextChanged"
+                                   Focused="PickupEntry_OnFocused" />
+                        </Grid>
+                    </Border>
+
+                    <Border x:Name="DropoffEntryContainer"
+                            Stroke="{AppThemeBinding Light=#1A000000, Dark=#22FFFFFF}"
+                            StrokeThickness="1"
+                            BackgroundColor="{AppThemeBinding Light=#FFFFFFFF, Dark=#FF222228}"
+                            Padding="12,10">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="14" />
+                        </Border.StrokeShape>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Label Text="●"
+                                   FontSize="18"
+                                   TextColor="#dc2626"
+                                   VerticalOptions="Center" />
+                            <Entry x:Name="DropoffEntry"
+                                   Grid.Column="1"
+                                   Placeholder="Nhập điểm đến"
+                                   ClearButtonVisibility="WhileEditing"
+                                   TextChanged="DropoffEntry_OnTextChanged"
+                                   Focused="DropoffEntry_OnFocused" />
+                        </Grid>
+                    </Border>
+                </VerticalStackLayout>
+
+                <!-- Suggestions -->
+                <Border x:Name="SuggestionsContainer"
+                        IsVisible="False"
+                        Stroke="{AppThemeBinding Light=#1A000000, Dark=#22FFFFFF}"
+                        StrokeThickness="1"
+                        BackgroundColor="{AppThemeBinding Light=#FFFFFFFF, Dark=#FF222228}"
+                        Padding="6">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="14" />
+                    </Border.StrokeShape>
+                    <CollectionView x:Name="SuggestionsList"
+                                    SelectionMode="Single"
+                                    SelectionChanged="SuggestionsList_OnSelectionChanged"
+                                    MaximumHeightRequest="220">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="10,8">
+                                    <Label Text="{Binding Name}"
+                                           FontSize="13"
+                                           LineBreakMode="TailTruncation" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Border>
+
+                <Border Stroke="{AppThemeBinding Light=#1A000000, Dark=#22FFFFFF}"
+                        StrokeThickness="1"
+                        BackgroundColor="{AppThemeBinding Light=#FFFFFFFF, Dark=#FF222228}"
+                        Padding="12,10">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="14" />
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="Chạm bản đồ để chọn vị trí"
+                               FontSize="12"
+                               TextColor="{AppThemeBinding Light={StaticResource Gray600}, Dark={StaticResource Gray300}}" />
+                        <Label x:Name="SummaryLabel"
+                               FontSize="12"
+                               TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource Gray100}}"
+                               Text="Chưa chọn điểm." />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Button Text="Đặt xe"
+                        CornerRadius="16"
+                        Padding="16,14" />
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

@@ -76,5 +76,13 @@
 		<PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.10" />
 		<PackageReference Include="Syncfusion.Maui.Toolkit" Version="1.0.8" />
 	</ItemGroup>
+
+	<!-- Exclude backend (ASP.NET Core) sources from MAUI app compilation -->
+	<ItemGroup>
+		<Compile Remove="RideAPI\**\*.cs" />
+		<EmbeddedResource Remove="RideAPI\**\*" />
+		<Content Remove="RideAPI\**\*" />
+		<None Remove="RideAPI\**\*" />
+	</ItemGroup>
 	
 </Project>

@@ -1,5 +1,7 @@
 ﻿using CommunityToolkit.Maui;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Maui.Hosting;
 using Syncfusion.Maui.Toolkit.Hosting;
 
 namespace APP_GoiXetheoGPS
@@ -20,14 +22,6 @@ namespace APP_GoiXetheoGPS
     				{
     					handler.PlatformView.SingleSelectionFollowsFocus = false;
     				});
-
-    				Microsoft.Maui.Handlers.ContentViewHandler.Mapper.AppendToMapping(nameof(Pages.Controls.CategoryChart), (handler, view) =>
-    				{
-    					if (view is Pages.Controls.CategoryChart && handler.PlatformView is Microsoft.Maui.Platform.ContentPanel contentPanel)
-    					{
-    						contentPanel.IsTabStop = true;
-    					}
-    				});
 #endif
                 })
                 .ConfigureFonts(fonts =>
@@ -41,20 +35,11 @@ namespace APP_GoiXetheoGPS
 #if DEBUG
     		builder.Logging.AddDebug();
     		builder.Services.AddLogging(configure => configure.AddDebug());
+    		builder.Services.AddHybridWebViewDeveloperTools();
 #endif
 
-            builder.Services.AddSingleton<ProjectRepository>();
-            builder.Services.AddSingleton<TaskRepository>();
-            builder.Services.AddSingleton<CategoryRepository>();
-            builder.Services.AddSingleton<TagRepository>();
-            builder.Services.AddSingleton<SeedDataService>();
-            builder.Services.AddSingleton<ModalErrorHandler>();
-            builder.Services.AddSingleton<MainPageModel>();
-            builder.Services.AddSingleton<ProjectListPageModel>();
-            builder.Services.AddSingleton<ManageMetaPageModel>();
-
-            builder.Services.AddTransientWithShellRoute<ProjectDetailPage, ProjectDetailPageModel>("project");
-            builder.Services.AddTransientWithShellRoute<TaskDetailPage, TaskDetailPageModel>("task");
+            builder.Services.AddSingleton<MainPage>();
+            builder.Services.AddSingleton<HomeMapPage>();
 
             return builder.Build();
         }

@@ -9,22 +9,16 @@
     Title="APP_GoiXetheoGPS">
 
     <ShellContent
-        Title="Dashboard"
+        Title="Trang chủ"
         Icon="{StaticResource IconDashboard}"
         ContentTemplate="{DataTemplate pages:MainPage}"
-        Route="main" />
+        Route="home" />
 
     <ShellContent
-        Title="Projects"
-        Icon="{StaticResource IconProjects}"
-        ContentTemplate="{DataTemplate pages:ProjectListPage}"
-        Route="projects" />
-
-    <ShellContent
-        Title="Manage Meta"
-        Icon="{StaticResource IconMeta}"
-        ContentTemplate="{DataTemplate pages:ManageMetaPage}"
-        Route="manage" />
+        Title="Bản đồ"
+        Icon="{StaticResource IconHomeMap}"
+        ContentTemplate="{DataTemplate pages:HomeMapPage}"
+        Route="map" />
 
     <Shell.FlyoutFooter>
         <Grid Padding="15">

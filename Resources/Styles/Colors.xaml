@@ -5,12 +5,13 @@
 
     <!-- Note: For Android please see also Platforms\Android\Resources\values\colors.xml -->
 
-    <Color x:Key="Primary">#512BD4</Color>
-    <Color x:Key="PrimaryDark">#ac99ea</Color>
-    <Color x:Key="PrimaryDarkText">#242424</Color>
-    <Color x:Key="Secondary">#DFD8F7</Color>
-    <Color x:Key="SecondaryDarkText">#9880e5</Color>
-    <Color x:Key="Tertiary">#2B0B98</Color>
+    <!-- Sky-blue primary (themed like the mock). -->
+    <Color x:Key="Primary">#2D7DFF</Color>
+    <Color x:Key="PrimaryDark">#9BC2FF</Color>
+    <Color x:Key="PrimaryDarkText">#0B1B33</Color>
+    <Color x:Key="Secondary">#EAF2FF</Color>
+    <Color x:Key="SecondaryDarkText">#2D7DFF</Color>
+    <Color x:Key="Tertiary">#1B4EB3</Color>
 
     <Color x:Key="DarkBackground">#17171a</Color>
     <Color x:Key="LightOnDarkBackground">#C3C3C3</Color>

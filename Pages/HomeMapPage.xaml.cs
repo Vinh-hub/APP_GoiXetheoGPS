@@ -1,0 +1,428 @@
+using System.Globalization;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
+using APP_GoiXetheoGPS.Configuration;
+
+namespace APP_GoiXetheoGPS.Pages
+{
+    public partial class HomeMapPage : ContentPage
+    {
+        private double _gpsButtonStartY;
+
+        // HttpClient dùng chung cho tính năng gợi ý địa điểm (Mapbox Geocoding).
+        private static readonly HttpClient Http = new();
+
+        // Trạng thái chọn loại điểm hiện tại (đón / đến) khi người dùng chạm bản đồ.
+        private bool _placingPickup = true;
+
+        // Tọa độ đã chọn (có thể đến từ: chạm bản đồ hoặc chọn gợi ý khi nhập chữ).
+        private double? _pickupLat;
+        private double? _pickupLng;
+        private double? _dropLat;
+        private double? _dropLng;
+
+        // Hủy request autocomplete cũ khi người dùng gõ tiếp (tránh spam API).
+        private CancellationTokenSource? _suggestCts;
+
+        // Chống vòng lặp: khi mình set text Entry theo gợi ý thì không gọi lại TextChanged.
+        private bool _suppressTextEvents;
+
+        // Entry đang được thao tác (để biết gợi ý chọn xong sẽ set cho điểm đón hay điểm đến).
+        private enum ActiveField { Pickup, Dropoff }
+        private ActiveField _activeField = ActiveField.Pickup;
+
+        // Model gợi ý địa điểm (tên hiển thị + tọa độ).
+        private sealed record MapboxSuggestion(string Name, double Lat, double Lng);
+
+        public HomeMapPage()
+        {
+            InitializeComponent();
+            SuggestionsList.ItemsSource = new List<MapboxSuggestion>();
+        }
+
+        private void BtnPickup_OnClicked(object? sender, EventArgs e)
+        {
+            _placingPickup = true;
+            _activeField = ActiveField.Pickup;
+            ApplySelectionStyle();
+            SetActiveEntryVisibility();
+            PickupEntry.Focus();
+        }
+
+        private void BtnDropoff_OnClicked(object? sender, EventArgs e)
+        {
+            _placingPickup = false;
+            _activeField = ActiveField.Dropoff;
+            ApplySelectionStyle();
+            SetActiveEntryVisibility();
+            DropoffEntry.Focus();
+        }
+
+        protected override void OnAppearing()
+        {
+            base.OnAppearing();
+            ApplySelectionStyle();
+            SetActiveEntryVisibility();
+        }
+
+        private void ApplySelectionStyle()
+        {
+            // Màu nút theo trạng thái chọn: xanh = đang chọn, xám = không chọn.
+            var active = Color.FromArgb("#2D7DFF");
+            var inactive = Application.Current?.RequestedTheme == AppTheme.Dark
+                ? Color.FromArgb("#3A3A3C")
+                : Color.FromArgb("#E9ECEF");
+
+            BtnPickup.BackgroundColor = _placingPickup ? active : inactive;
+            BtnDropoff.BackgroundColor = !_placingPickup ? active : inactive;
+            BtnPickup.TextColor = Colors.White;
+            BtnDropoff.TextColor = Colors.White;
+        }
+
+        private void SetActiveEntryVisibility()
+        {
+            PickupEntryContainer.IsVisible = _activeField == ActiveField.Pickup;
+            DropoffEntryContainer.IsVisible = _activeField == ActiveField.Dropoff;
+        }
+
+        private void PickupEntry_OnFocused(object? sender, FocusEventArgs e)
+        {
+            _placingPickup = true;
+            _activeField = ActiveField.Pickup;
+            ApplySelectionStyle();
+            SetActiveEntryVisibility();
+        }
+
+        private void DropoffEntry_OnFocused(object? sender, FocusEventArgs e)
+        {
+            _placingPickup = false;
+            _activeField = ActiveField.Dropoff;
+            ApplySelectionStyle();
+            SetActiveEntryVisibility();
+        }
+
+        private async void PickupEntry_OnTextChanged(object? sender, TextChangedEventArgs e)
+        {
+            if (_suppressTextEvents) return;
+            _activeField = ActiveField.Pickup;
+            await UpdateSuggestionsAsync(e.NewTextValue);
+        }
+
+        private async void DropoffEntry_OnTextChanged(object? sender, TextChangedEventArgs e)
+        {
+            if (_suppressTextEvents) return;
+            _activeField = ActiveField.Dropoff;
+            await UpdateSuggestionsAsync(e.NewTextValue);
+        }
+
+        private void GpsButton_OnPanUpdated(object? sender, PanUpdatedEventArgs e)
+        {
+            if (sender is not VisualElement btn)
+                return;
+
+            switch (e.StatusType)
+            {
+                case GestureStatus.Started:
+                    _gpsButtonStartY = btn.TranslationY;
+                    break;
+
+                case GestureStatus.Running:
+                {
+                    // Only allow vertical dragging within the page bounds.
+                    var proposed = _gpsButtonStartY + e.TotalY;
+
+                    // Keep some padding from top/bottom edges.
+                    const double padding = 12;
+                    var maxY = Math.Max(0, Height - btn.Height - padding - 72); // 72 ~ status/header safe offset
+                    var clamped = Math.Min(Math.Max(0, proposed), maxY);
+                    btn.TranslationY = clamped;
+                    break;
+                }
+
+                case GestureStatus.Canceled:
+                case GestureStatus.Completed:
+                default:
+                    break;
+            }
+        }
+
+        private async void GpsButton_OnTapped(object? sender, TappedEventArgs e)
+        {
+            await SetCurrentLocationAsync();
+        }
+
+        private async Task SetCurrentLocationAsync()
+        {
+            try
+            {
+                var perm = await Permissions.RequestAsync<Permissions.LocationWhenInUse>();
+                if (perm != PermissionStatus.Granted)
+                {
+                    await DisplayAlert("Quyền vị trí", "Bạn cần cấp quyền vị trí để dùng chức năng này.", "OK");
+                    return;
+                }
+
+                var request = new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(10));
+                var location = await Geolocation.GetLocationAsync(request) ?? await Geolocation.GetLastKnownLocationAsync();
+                if (location is null)
+                {
+                    await DisplayAlert("Không lấy được vị trí", "Không thể lấy GPS. Hãy bật Location trên thiết bị/emulator và thử lại.", "OK");
+                    return;
+                }
+
+                var lat = location.Latitude;
+                var lng = location.Longitude;
+                var lngS = lng.ToString(CultureInfo.InvariantCulture);
+                var latS = lat.ToString(CultureInfo.InvariantCulture);
+                var label = $"Vị trí hiện tại ({lat.ToString("F5", CultureInfo.InvariantCulture)}, {lng.ToString("F5", CultureInfo.InvariantCulture)})";
+
+                _suppressTextEvents = true;
+                try
+                {
+                    if (_activeField == ActiveField.Pickup)
+                    {
+                        _placingPickup = true;
+                        ApplySelectionStyle();
+                        SetActiveEntryVisibility();
+                        _pickupLat = lat;
+                        _pickupLng = lng;
+                        PickupEntry.Text = label;
+                        PickupEntry.Focus();
+                        await MapHybrid.EvaluateJavaScriptAsync($"setPickupMarker({lngS}, {latS}); flyTo({lngS}, {latS});");
+                    }
+                    else
+                    {
+                        _placingPickup = false;
+                        ApplySelectionStyle();
+                        SetActiveEntryVisibility();
+                        _dropLat = lat;
+                        _dropLng = lng;
+                        DropoffEntry.Text = label;
+                        DropoffEntry.Focus();
+                        await MapHybrid.EvaluateJavaScriptAsync($"setDropoffMarker({lngS}, {latS}); flyTo({lngS}, {latS});");
+                    }
+                }
+                finally
+                {
+                    _suppressTextEvents = false;
+                }
+
+                UpdateSummary();
+            }
+            catch (FeatureNotSupportedException)
+            {
+                await DisplayAlert("Không hỗ trợ", "Thiết bị không hỗ trợ định vị.", "OK");
+            }
+            catch (FeatureNotEnabledException)
+            {
+                await DisplayAlert("Chưa bật vị trí", "Bạn cần bật Location/GPS để dùng chức năng này.", "OK");
+            }
+            catch
+            {
+                await DisplayAlert("Lỗi", "Có lỗi khi lấy vị trí hiện tại. Thử lại giúp mình nhé.", "OK");
+            }
+        }
+
+        private async Task UpdateSuggestionsAsync(string? query)
+        {
+            // Autocomplete: chỉ gọi Mapbox khi người dùng nhập >= 3 ký tự.
+            _suggestCts?.Cancel();
+            _suggestCts = new CancellationTokenSource();
+            var ct = _suggestCts.Token;
+
+            query = (query ?? string.Empty).Trim();
+            if (query.Length < 3)
+            {
+                SetSuggestions(Array.Empty<MapboxSuggestion>());
+                return;
+            }
+
+            try
+            {
+                // Debounce để giảm số lần gọi API khi người dùng gõ nhanh.
+                await Task.Delay(250, ct);
+                var items = await GeocodeAsync(query, ct);
+                SetSuggestions(items);
+            }
+            catch (OperationCanceledException)
+            {
+                // ignore
+            }
+            catch
+            {
+                SetSuggestions(Array.Empty<MapboxSuggestion>());
+            }
+        }
+
+        private void SetSuggestions(IReadOnlyList<MapboxSuggestion> items)
+        {
+            SuggestionsList.ItemsSource = items;
+            SuggestionsContainer.IsVisible = items.Count > 0;
+        }
+
+        private async void SuggestionsList_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            // Người dùng chọn 1 gợi ý => đặt marker tương ứng (đón/đến) + bay tới vị trí.
+            if (e.CurrentSelection.FirstOrDefault() is not MapboxSuggestion s)
+                return;
+
+            SuggestionsList.SelectedItem = null;
+            SuggestionsContainer.IsVisible = false;
+
+            var lngS = s.Lng.ToString(CultureInfo.InvariantCulture);
+            var latS = s.Lat.ToString(CultureInfo.InvariantCulture);
+
+            _suppressTextEvents = true;
+            try
+            {
+                if (_activeField == ActiveField.Pickup)
+                {
+                    PickupEntry.Text = s.Name;
+                    _pickupLat = s.Lat;
+                    _pickupLng = s.Lng;
+                    await MapHybrid.EvaluateJavaScriptAsync($"setPickupMarker({lngS}, {latS}); flyTo({lngS}, {latS});");
+                }
+                else
+                {
+                    DropoffEntry.Text = s.Name;
+                    _dropLat = s.Lat;
+                    _dropLng = s.Lng;
+                    await MapHybrid.EvaluateJavaScriptAsync($"setDropoffMarker({lngS}, {latS}); flyTo({lngS}, {latS});");
+                }
+            }
+            finally
+            {
+                _suppressTextEvents = false;
+            }
+
+            UpdateSummary();
+        }
+
+        private static async Task<IReadOnlyList<MapboxSuggestion>> GeocodeAsync(string query, CancellationToken ct)
+        {
+            // Mapbox Forward Geocoding:
+            // - autocomplete=true để gợi ý khi gõ
+            // - language=vi để ưu tiên tiếng Việt (nếu có)
+            // - limit=6 để UI gọn
+            var token = Uri.EscapeDataString(MapboxConfig.AccessToken);
+            var q = Uri.EscapeDataString(query);
+
+            var url =
+                $"https://api.mapbox.com/geocoding/v5/mapbox.places/{q}.json" +
+                $"?access_token={token}&language=vi&limit=6&autocomplete=true";
+
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            using var res = await Http.SendAsync(req, ct);
+            res.EnsureSuccessStatusCode();
+
+            using var stream = await res.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+            if (!doc.RootElement.TryGetProperty("features", out var features) || features.ValueKind != JsonValueKind.Array)
+                return Array.Empty<MapboxSuggestion>();
+
+            var list = new List<MapboxSuggestion>();
+            foreach (var f in features.EnumerateArray())
+            {
+                if (!f.TryGetProperty("place_name", out var placeNameEl)) continue;
+                var placeName = placeNameEl.GetString();
+                if (string.IsNullOrWhiteSpace(placeName)) continue;
+
+                if (!f.TryGetProperty("center", out var centerEl) || centerEl.ValueKind != JsonValueKind.Array) continue;
+                if (centerEl.GetArrayLength() < 2) continue;
+
+                var lng = centerEl[0].GetDouble();
+                var lat = centerEl[1].GetDouble();
+
+                list.Add(new MapboxSuggestion(placeName, lat, lng));
+            }
+
+            return list;
+        }
+
+        private async void MapHybrid_OnRawMessageReceived(object? sender, HybridWebViewRawMessageReceivedEventArgs e)
+        {
+            // Nhận message từ trang mapbox-home.html (JS) gửi sang C#:
+            // - type=ready: WebView sẵn sàng => gọi startMap(token)
+            // - type=mapClick: user chạm bản đồ => nhận lat/lng và đặt marker
+            await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(e.Message))
+                        return;
+
+                    using var doc = JsonDocument.Parse(e.Message);
+                    var root = doc.RootElement;
+                    var type = root.GetProperty("type").GetString();
+                    if (type == "ready")
+                    {
+                        // Truyền token từ C# sang JS để khởi tạo Mapbox.
+                        if (!MapboxConfig.TryGetAccessToken(out var token))
+                        {
+                            var input = await DisplayPromptAsync(
+                                "Thiếu cấu hình Mapbox",
+                                "Android emulator thường không nhận biến môi trường từ Windows.\n\n" +
+                                "Dán Mapbox public token (bắt đầu bằng pk.) để lưu trên máy này.",
+                                accept: "Lưu",
+                                cancel: "Hủy",
+                                placeholder: "pk....",
+                                maxLength: 200,
+                                keyboard: Keyboard.Text);
+
+                            if (string.IsNullOrWhiteSpace(input))
+                                return;
+
+                            MapboxConfig.SaveAccessToken(input);
+                            token = MapboxConfig.AccessToken;
+                        }
+
+                        var tokenJson = JsonSerializer.Serialize(token);
+                        await MapHybrid.EvaluateJavaScriptAsync($"startMap({tokenJson});");
+                        return;
+                    }
+
+                    if (type == "mapClick")
+                    {
+                        // Click trên map: đặt điểm đón/đến tùy theo trạng thái đang chọn.
+                        var lat = root.GetProperty("lat").GetDouble();
+                        var lng = root.GetProperty("lng").GetDouble();
+                        var lngS = lng.ToString(CultureInfo.InvariantCulture);
+                        var latS = lat.ToString(CultureInfo.InvariantCulture);
+                        if (_placingPickup)
+                        {
+                            _pickupLat = lat;
+                            _pickupLng = lng;
+                            await MapHybrid.EvaluateJavaScriptAsync($"setPickupMarker({lngS}, {latS});");
+                        }
+                        else
+                        {
+                            _dropLat = lat;
+                            _dropLng = lng;
+                            await MapHybrid.EvaluateJavaScriptAsync($"setDropoffMarker({lngS}, {latS});");
+                        }
+
+                        UpdateSummary();
+                    }
+                }
+                catch
+                {
+                    // ignore malformed messages
+                }
+            });
+        }
+
+        private void UpdateSummary()
+        {
+            // Tóm tắt nhanh tọa độ đã chọn để người dùng biết đã set điểm nào.
+            var parts = new List<string>();
+            if (_pickupLat is double plat && _pickupLng is double plng)
+                parts.Add($"Đón: {plat.ToString("F5", CultureInfo.InvariantCulture)}, {plng.ToString("F5", CultureInfo.InvariantCulture)}");
+            if (_dropLat is double dlat && _dropLng is double dlng)
+                parts.Add($"Đến: {dlat.ToString("F5", CultureInfo.InvariantCulture)}, {dlng.ToString("F5", CultureInfo.InvariantCulture)}");
+
+            SummaryLabel.Text = parts.Count > 0 ? string.Join(" · ", parts) : "Chưa chọn điểm.";
+        }
+    }
+}

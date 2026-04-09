@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        html, body, #map { margin: 0; padding: 0; height: 100%; width: 100%; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script src="_framework/hybridwebview.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
+    <script>
+        let map;
+        let pickupMarker = null;
+        let dropoffMarker = null;
+
+        function startMap(token) {
+            // Khởi tạo bản đồ Mapbox (chỉ chạy 1 lần).
+            if (map) return;
+            mapboxgl.accessToken = token;
+            map = new mapboxgl.Map({
+                container: 'map',
+                style: 'mapbox://styles/mapbox/streets-v12',
+                center: [106.7009, 10.7769],
+                zoom: 12
+            });
+            map.addControl(new mapboxgl.NavigationControl());
+            map.on('click', function (e) {
+                // Khi người dùng chạm bản đồ => gửi lat/lng qua C# để app quyết định là điểm đón hay điểm đến.
+                var msg = JSON.stringify({
+                    type: 'mapClick',
+                    lat: e.lngLat.lat,
+                    lng: e.lngLat.lng
+                });
+                window.HybridWebView.SendRawMessage(msg);
+            });
+        }
+
+        function setPickupMarker(lng, lat) {
+            // Marker điểm đón (màu xanh lá).
+            if (!map) return;
+            if (!pickupMarker) {
+                pickupMarker = new mapboxgl.Marker({ color: '#16a34a' }).setLngLat([lng, lat]).addTo(map);
+            } else {
+                pickupMarker.setLngLat([lng, lat]);
+            }
+        }
+
+        function setDropoffMarker(lng, lat) {
+            // Marker điểm đến (màu đỏ).
+            if (!map) return;
+            if (!dropoffMarker) {
+                dropoffMarker = new mapboxgl.Marker({ color: '#dc2626' }).setLngLat([lng, lat]).addTo(map);
+            } else {
+                dropoffMarker.setLngLat([lng, lat]);
+            }
+        }
+
+        function flyTo(lng, lat) {
+            // Bay/zoom tới vị trí vừa chọn (khi chọn gợi ý từ ô nhập chữ).
+            if (!map) return;
+            map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15) });
+        }
+
+        window.addEventListener('load', function () {
+            function pingReady() {
+                if (window.HybridWebView && typeof window.HybridWebView.SendRawMessage === 'function') {
+                    // Báo cho C# biết JS đã sẵn sàng => C# sẽ gọi startMap(token).
+                    window.HybridWebView.SendRawMessage(JSON.stringify({ type: 'ready' }));
+                } else {
+                    setTimeout(pingReady, 30);
+                }
+            }
+            pingReady();
+        });
+    </script>
+</body>
+</html>

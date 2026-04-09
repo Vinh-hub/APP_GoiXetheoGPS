@@ -10,20 +10,30 @@ using System.Text;
 namespace RideAPI.Controllers
 {
     [Route("api/auth")]
-    [ApiController]      // đánh dấu đây là API Controller, .NET sẽ tự xử lý validate request
+    [ApiController] // API Controller: tự bind/validate request body
     public class AuthController : ControllerBase
     {
-        private readonly DatabaseService _db;       // dùng để kết nối tới NorthDB hoặc SouthDB
-        private readonly IConfiguration _config;    // dùng để đọc cấu hình từ appsettings.json
+        // Kết nối DB theo khu vực (NorthDB/SouthDB) dựa vào vĩ độ trong header.
+        private readonly DatabaseService _db;
 
-        // ── Constructor: .NET tự inject DatabaseService và IConfiguration vào ──
-        public AuthController(DatabaseService db, IConfiguration config)
+        // Đọc cấu hình JWT, connection strings...
+        private readonly IConfiguration _config;
+
+        // Chỉ dùng để bật/tắt trả về "detail" khi lỗi (dev vs prod).
+        private readonly IWebHostEnvironment _env;
+
+        // .NET DI tự inject các dependency ở đây.
+        public AuthController(DatabaseService db, IConfiguration config, IWebHostEnvironment env)
         {
             _db = db;
             _config = config;
+            _env = env;
         }
 
-        // API 1: ĐĂNG NHẬP
+        /// <summary>
+        /// Đăng nhập bằng Email + Password.
+        /// Users là bảng "tài khoản", liên kết 1-1 tới Customers hoặc Drivers.
+        /// </summary>
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
@@ -42,10 +52,23 @@ namespace RideAPI.Controllers
                 using var conn = _db.GetConnection(lat);
                 await conn.OpenAsync();
 
-                // Bước 4: Tìm user trong DB theo email và password
-                var sql = @"SELECT UserID, Name, Email, RegionID, IsActive
-                            FROM Users
-                            WHERE Email = @email AND Password = @pwd
+                // Query lấy:
+                // - thông tin account (UserID/Role/CustomerID/DriverID/IsActive...)
+                // - thông tin hiển thị từ profile (Customers.FullName/Phone hoặc Drivers.Name/Phone)
+                var sql = @"SELECT 
+                                u.UserID,
+                                u.Email,
+                                u.Role,
+                                u.CustomerID,
+                                u.DriverID,
+                                u.RegionID,
+                                u.IsActive,
+                                COALESCE(c.FullName, d.Name, u.Name) AS DisplayName,
+                                COALESCE(c.Phone, d.Phone, u.Phone)  AS DisplayPhone
+                            FROM Users u
+                            LEFT JOIN Customers c ON c.CustomerID = u.CustomerID
+                            LEFT JOIN Drivers   d ON d.DriverID   = u.DriverID
+                            WHERE u.Email = @email AND u.Password = @pwd
                             LIMIT 1";
 
                 using var cmd = new MySqlCommand(sql, conn);
@@ -64,37 +87,56 @@ namespace RideAPI.Controllers
                 if (!isActive)
                     return Unauthorized(new { message = "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên." });
 
-                // Bước 7: Lấy thông tin user từ DB
-                var user = new User
-                {
-                    UserID = reader.GetInt32("UserID"),
-                    Name = reader.GetString("Name"),
-                    Email = reader.GetString("Email"),
-                    RegionID = reader.GetInt32("RegionID"),
-                    IsActive = isActive
-                };
+                var userId = reader.GetInt32("UserID");
+                var email = reader.GetString("Email");
+                var role = reader.GetString("Role"); // Customer | Driver
+                var regionId = reader.GetInt32("RegionID");
+                var displayName = reader.IsDBNull(reader.GetOrdinal("DisplayName")) ? "" : reader.GetString("DisplayName");
+                var displayPhone = reader.IsDBNull(reader.GetOrdinal("DisplayPhone")) ? "" : reader.GetString("DisplayPhone");
+                int? customerId = reader.IsDBNull(reader.GetOrdinal("CustomerID")) ? null : reader.GetInt32("CustomerID");
+                int? driverId = reader.IsDBNull(reader.GetOrdinal("DriverID")) ? null : reader.GetInt32("DriverID");
 
-                // Bước 8: Tạo JWT token chứa thông tin user
-                var token = GenerateJwt(user.UserID.ToString(), user.Name, user.Email, user.RegionID);
+                // Tạo JWT token (để app gửi kèm Authorization: Bearer <token> ở các request sau)
+                var token = GenerateJwt(
+                    userId: userId.ToString(),
+                    name: displayName,
+                    email: email,
+                    regionId: regionId,
+                    role: role,
+                    customerId: customerId,
+                    driverId: driverId);
 
                 // Bước 9: Trả về token và thông tin user cho app
                 return Ok(new
                 {
                     message = "Đăng nhập thành công.",
                     token,                      // JWT token, app lưu lại dùng cho các request sau
-                    userId = user.UserID,
-                    name = user.Name,
-                    email = user.Email,
-                    regionId = user.RegionID    // 1 = Bắc, 2 = Nam
+                    userId,
+                    role,
+                    customerId,
+                    driverId,
+                    name = displayName,
+                    phone = displayPhone,
+                    email,
+                    regionId
                 });
             }
-            catch (MySqlException)
+            catch (MySqlException ex)
             {
-                return StatusCode(503, new { message = "Khu vực này đang bảo trì. Vui lòng thử lại sau." });
+                // MySQL lỗi kết nối / sai schema / DB read-only... trả về 503 để app biết "dịch vụ khu vực" không sẵn sàng.
+                // Ở môi trường dev sẽ trả thêm detail để debug nhanh.
+                return StatusCode(503, new
+                {
+                    message = "Khu vực này đang bảo trì. Vui lòng thử lại sau.",
+                    detail = _env.IsDevelopment() ? ex.Message : null
+                });
             }
         }
 
-        // API 2: ĐĂNG KÝ TÀI KHOẢN MỚI
+        /// <summary>
+        /// Đăng ký tài khoản mới cho khách hàng.
+        /// Luồng tạo dữ liệu: Customers (profile) -> Users (account).
+        /// </summary>
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
@@ -126,39 +168,65 @@ namespace RideAPI.Controllers
                 if (count > 0)
                     return Conflict(new { message = "Email này đã được đăng ký." });
 
-                // Bước 5: Thêm user mới vào DB
-                //   IsActive mặc định = 1 (tài khoản hoạt động bình thường)
-                var insertSql = @"INSERT INTO Users (Name, Phone, Email, Password, RegionID, IsActive)
-                                  VALUES (@name, @phone, @email, @pwd, @region, 1)";
-                using var insertCmd = new MySqlCommand(insertSql, conn);
-                insertCmd.Parameters.AddWithValue("@name", request.Name.Trim());
-                insertCmd.Parameters.AddWithValue("@phone", request.Phone?.Trim() ?? "");
-                insertCmd.Parameters.AddWithValue("@email", request.Email.Trim());
-                insertCmd.Parameters.AddWithValue("@pwd", request.Password);
-                insertCmd.Parameters.AddWithValue("@region", regionId);
+                // Dùng transaction để tránh trường hợp:
+                // - tạo Customer xong nhưng tạo User lỗi => dữ liệu bị "mồ côi".
+                // Luồng tạo: Customers (profile) -> Users (account, Role='Customer', CustomerID).
+                using var tx = await conn.BeginTransactionAsync();
 
-                await insertCmd.ExecuteNonQueryAsync();
+                var insertCustomerSql = @"INSERT INTO Customers (FullName, Phone, Email)
+                                          VALUES (@name, @phone, @email)";
+                using var customerCmd = new MySqlCommand(insertCustomerSql, conn, tx);
+                customerCmd.Parameters.AddWithValue("@name", request.Name.Trim());
+                customerCmd.Parameters.AddWithValue("@phone", request.Phone?.Trim() ?? "");
+                customerCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                await customerCmd.ExecuteNonQueryAsync();
+                var newCustomerId = (int)customerCmd.LastInsertedId;
 
-                // Bước 6: Lấy ID vừa được tạo trong DB
-                var newId = (int)insertCmd.LastInsertedId;
+                var insertUserSql = @"INSERT INTO Users (Email, Password, Role, CustomerID, Name, Phone, RegionID, IsActive)
+                                      VALUES (@email, @pwd, 'Customer', @cid, @name, @phone, @region, 1)";
+                using var userCmd = new MySqlCommand(insertUserSql, conn, tx);
+                userCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                userCmd.Parameters.AddWithValue("@pwd", request.Password);
+                userCmd.Parameters.AddWithValue("@cid", newCustomerId);
+                userCmd.Parameters.AddWithValue("@name", request.Name.Trim());
+                userCmd.Parameters.AddWithValue("@phone", request.Phone?.Trim() ?? "");
+                userCmd.Parameters.AddWithValue("@region", regionId);
+                await userCmd.ExecuteNonQueryAsync();
+                var newUserId = (int)userCmd.LastInsertedId;
 
-                // Bước 7: Tạo JWT token cho user mới
-                var token = GenerateJwt(newId.ToString(), request.Name, request.Email, regionId);
+                await tx.CommitAsync();
+
+                // Trả token luôn để app đăng nhập ngay sau đăng ký.
+                var token = GenerateJwt(
+                    userId: newUserId.ToString(),
+                    name: request.Name.Trim(),
+                    email: request.Email.Trim(),
+                    regionId: regionId,
+                    role: "Customer",
+                    customerId: newCustomerId,
+                    driverId: null);
 
                 // Bước 8: Trả về token và thông tin user cho app
                 return Ok(new
                 {
                     message = "Đăng ký thành công.",
                     token,
-                    userId = newId,
+                    userId = newUserId,
+                    role = "Customer",
+                    customerId = newCustomerId,
+                    driverId = (int?)null,
                     name = request.Name,
                     email = request.Email,
                     regionId
                 });
             }
-            catch (MySqlException)
+            catch (MySqlException ex)
             {
-                return StatusCode(503, new { message = "Khu vực này đang bảo trì. Vui lòng thử lại sau." });
+                return StatusCode(503, new
+                {
+                    message = "Khu vực này đang bảo trì. Vui lòng thử lại sau.",
+                    detail = _env.IsDevelopment() ? ex.Message : null
+                });
             }
         }
 
@@ -175,22 +243,28 @@ namespace RideAPI.Controllers
             return 10.8;
         }
 
-        // HELPER 2: TẠO JWT TOKEN
-        private string GenerateJwt(string userId, string name, string email, int regionId)
+        // HELPER 2: TẠO JWT TOKEN (nhúng role + id profile để client biết đang là Customer hay Driver)
+        private string GenerateJwt(string userId, string name, string email, int regionId, string role, int? customerId, int? driverId)
         {
             // Đọc JWT key từ appsettings.json
             var jwtKey = _config["Jwt:Key"]
                 ?? "YourSuperSecretKeyForJwtAuthenticationWhichNeedsToBeLongEnough";
 
             // Thông tin được nhúng vào trong token
-            var claims = new[]
+            var claims = new List<Claim>
             {
-                new Claim(JwtRegisteredClaimNames.Sub,   userId),    // ID người dùng
-                new Claim(JwtRegisteredClaimNames.Name,  name),      // Tên người dùng
-                new Claim(JwtRegisteredClaimNames.Email, email),     // Email
-                new Claim("regionId",                    regionId.ToString()), // Vùng (1=Bắc, 2=Nam)
-                new Claim(JwtRegisteredClaimNames.Jti,   Guid.NewGuid().ToString()) // ID duy nhất của token
+                new(JwtRegisteredClaimNames.Sub, userId),
+                new(JwtRegisteredClaimNames.Name, name ?? string.Empty),
+                new(JwtRegisteredClaimNames.Email, email ?? string.Empty),
+                new("regionId", regionId.ToString()),
+                new("role", role ?? string.Empty),
+                new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
+
+            if (customerId is int cid)
+                claims.Add(new Claim("customerId", cid.ToString()));
+            if (driverId is int did)
+                claims.Add(new Claim("driverId", did.ToString()));
 
             // Tạo chữ ký bảo mật cho token
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));

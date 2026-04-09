@@ -11,16 +11,36 @@ CREATE TABLE Regions (
 );
 INSERT INTO Regions VALUES (1, 'North');
 
+CREATE TABLE Customers (
+    CustomerID INT AUTO_INCREMENT PRIMARY KEY,
+    FullName   VARCHAR(100) NOT NULL,
+    Phone      VARCHAR(20),
+    Email      VARCHAR(100),
+    Gender     VARCHAR(10),
+    Birthday   DATE,
+    CreatedAt  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE Users (
     UserID    INT AUTO_INCREMENT PRIMARY KEY,
-    Name      VARCHAR(100),
-    Phone     VARCHAR(20),
-    Email     VARCHAR(100),
-    Password  VARCHAR(100),
+    Email     VARCHAR(100) NOT NULL,
+    Password  VARCHAR(100) NOT NULL,
+    Role      ENUM('Customer','Driver') NOT NULL,
+    CustomerID INT NULL,
+    DriverID   INT NULL,
+    Name      VARCHAR(100), 
+    Phone     VARCHAR(20),  
     RegionID  INT,
     IsActive  TINYINT(1) NOT NULL DEFAULT 1, -- 1 = hoạt động, 0 = bị khóa
     CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (RegionID) REFERENCES Regions(RegionID)
+    FOREIGN KEY (RegionID) REFERENCES Regions(RegionID),
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
+    UNIQUE KEY UQ_Users_Email (Email),
+    -- Mỗi user chỉ thuộc đúng 1 loại (Customer hoặc Driver)
+    CHECK (
+        (Role='Customer' AND CustomerID IS NOT NULL AND DriverID IS NULL) OR
+        (Role='Driver' AND DriverID IS NOT NULL AND CustomerID IS NULL)
+    )
 );
 
 CREATE TABLE Drivers (
@@ -32,6 +52,10 @@ CREATE TABLE Drivers (
     IsActive TINYINT(1) NOT NULL DEFAULT 1,  -- 1 = hoạt động, 0 = bị khóa
     FOREIGN KEY (RegionID) REFERENCES Regions(RegionID)
 );
+
+ALTER TABLE Users
+ADD CONSTRAINT FK_Users_Drivers
+FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID);
 
 CREATE TABLE Vehicles (
     VehicleID   INT AUTO_INCREMENT PRIMARY KEY,
@@ -104,22 +128,25 @@ CREATE TABLE DriverLocations (
     FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID)
 );
 
-CREATE TABLE Admins (
-    AdminID  INT AUTO_INCREMENT PRIMARY KEY,
-    Name     VARCHAR(100),
-    Email    VARCHAR(100),
-    Password VARCHAR(100)
-);
+INSERT INTO Customers (FullName, Phone, Email) VALUES
+('Nguyễn Văn An',  '0901234567', 'an.nguyen@gmail.com'),
+('Trần Thị Bích',  '0912345678', 'bich.tran@gmail.com'),
+('Lê Hoàng Nam',   '0923456789', 'locked_north@gmail.com');
 
-INSERT INTO Users (Name, Phone, Email, Password, RegionID, IsActive) VALUES
-('Nguyễn Văn An',  '0901234567', 'an.nguyen@gmail.com',    '123', 1, 1),
-('Trần Thị Bích',  '0912345678', 'bich.tran@gmail.com',    '123', 1, 1),
-('Lê Hoàng Nam',   '0923456789', 'locked_north@gmail.com', '123', 1, 0); -- bị khóa (để test)
+INSERT INTO Users (Email, Password, Role, CustomerID, Name, Phone, RegionID, IsActive) VALUES
+('an.nguyen@gmail.com',    '123', 'Customer', 1, 'Nguyễn Văn An', '0901234567', 1, 1),
+('bich.tran@gmail.com',    '123', 'Customer', 2, 'Trần Thị Bích', '0912345678', 1, 1),
+('locked_north@gmail.com', '123', 'Customer', 3, 'Lê Hoàng Nam',  '0923456789', 1, 0);
  
 INSERT INTO Drivers (Name, Phone, Status, RegionID, IsActive) VALUES
 ('Phạm Minh Tuấn', '0934567890', 'Available', 1, 1),
 ('Đỗ Quang Huy',   '0945678901', 'Available', 1, 1),
-('Vũ Đức Thắng',   '0956789012', 'Available', 1, 0); -- bị khóa (để test)
+('Vũ Đức Thắng',   '0956789012', 'Available', 1, 0); 
+
+INSERT INTO Users (Email, Password, Role, DriverID, Name, Phone, RegionID, IsActive) VALUES
+('tuan.driver@demo.com', '123', 'Driver', 1, 'Phạm Minh Tuấn', '0934567890', 1, 1),
+('huy.driver@demo.com',  '123', 'Driver', 2, 'Đỗ Quang Huy',   '0945678901', 1, 1),
+('thang.driver@demo.com','123', 'Driver', 3, 'Vũ Đức Thắng',   '0956789012', 1, 0);
  
 INSERT INTO Vehicles (DriverID, PlateNumber, VehicleType) VALUES
 (1, '29B1-123.45', 'Bike'),
@@ -150,16 +177,35 @@ CREATE TABLE Regions (
 );
 INSERT INTO Regions VALUES (2, 'South');
 
+CREATE TABLE Customers (
+    CustomerID INT AUTO_INCREMENT PRIMARY KEY,
+    FullName   VARCHAR(100) NOT NULL,
+    Phone      VARCHAR(20),
+    Email      VARCHAR(100),
+    Gender     VARCHAR(10),
+    Birthday   DATE,
+    CreatedAt  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE Users (
     UserID    INT AUTO_INCREMENT PRIMARY KEY,
-    Name      VARCHAR(100),
-    Phone     VARCHAR(20),
-    Email     VARCHAR(100),
-    Password  VARCHAR(100),
+    Email     VARCHAR(100) NOT NULL,
+    Password  VARCHAR(100) NOT NULL,
+    Role      ENUM('Customer','Driver') NOT NULL,
+    CustomerID INT NULL,
+    DriverID   INT NULL,
+    Name      VARCHAR(100), 
+    Phone     VARCHAR(20),  
     RegionID  INT,
     IsActive  TINYINT(1) NOT NULL DEFAULT 1, -- 1 = hoạt động, 0 = bị khóa
     CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (RegionID) REFERENCES Regions(RegionID)
+    FOREIGN KEY (RegionID) REFERENCES Regions(RegionID),
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
+    UNIQUE KEY UQ_Users_Email (Email),
+    CHECK (
+        (Role='Customer' AND CustomerID IS NOT NULL AND DriverID IS NULL) OR
+        (Role='Driver' AND DriverID IS NOT NULL AND CustomerID IS NULL)
+    )
 );
 
 CREATE TABLE Drivers (
@@ -171,6 +217,10 @@ CREATE TABLE Drivers (
     IsActive TINYINT(1) NOT NULL DEFAULT 1,  -- 1 = hoạt động, 0 = bị khóa
     FOREIGN KEY (RegionID) REFERENCES Regions(RegionID)
 );
+
+ALTER TABLE Users
+ADD CONSTRAINT FK_Users_Drivers
+FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID);
 
 CREATE TABLE Vehicles (
     VehicleID   INT AUTO_INCREMENT PRIMARY KEY,
@@ -243,22 +293,27 @@ CREATE TABLE DriverLocations (
     FOREIGN KEY (DriverID) REFERENCES Drivers(DriverID)
 );
 
-CREATE TABLE Admins (
-    AdminID  INT AUTO_INCREMENT PRIMARY KEY,
-    Name     VARCHAR(100),
-    Email    VARCHAR(100),
-    Password VARCHAR(100)
-);
+-- Seed Customers + Users (Customer accounts)
+INSERT INTO Customers (FullName, Phone, Email) VALUES
+('Huỳnh Thị Lan',   '0907654321', 'lan.huynh@gmail.com'),
+('Võ Thanh Tùng',   '0918765432', 'tung.vo@gmail.com'),
+('Ngô Thị Mai',     '0929876543', 'locked_south@gmail.com'); -- bị khóa (để test)
 
-INSERT INTO Users (Name, Phone, Email, Password, RegionID, IsActive) VALUES
-('Huỳnh Thị Lan',   '0907654321', 'lan.huynh@gmail.com',    '123', 2, 1),
-('Võ Thanh Tùng',   '0918765432', 'tung.vo@gmail.com',      '123', 2, 1),
-('Ngô Thị Mai',     '0929876543', 'locked_south@gmail.com', '123', 2, 0); -- bị khóa (để test)
+INSERT INTO Users (Email, Password, Role, CustomerID, Name, Phone, RegionID, IsActive) VALUES
+('lan.huynh@gmail.com',    '123', 'Customer', 1, 'Huỳnh Thị Lan', '0907654321', 2, 1),
+('tung.vo@gmail.com',      '123', 'Customer', 2, 'Võ Thanh Tùng', '0918765432', 2, 1),
+('locked_south@gmail.com', '123', 'Customer', 3, 'Ngô Thị Mai',   '0929876543', 2, 0);
  
 INSERT INTO Drivers (Name, Phone, Status, RegionID, IsActive) VALUES
 ('Trương Văn Khoa', '0938765432', 'Available', 2, 1),
 ('Bùi Thị Hoa',     '0949876543', 'Available', 2, 1),
 ('Đinh Quốc Bảo',   '0959876543', 'Available', 2, 0); -- bị khóa (để test)
+
+-- Seed Users (Driver accounts)
+INSERT INTO Users (Email, Password, Role, DriverID, Name, Phone, RegionID, IsActive) VALUES
+('khoa.driver@demo.com', '123', 'Driver', 1, 'Trương Văn Khoa', '0938765432', 2, 1),
+('hoa.driver@demo.com',  '123', 'Driver', 2, 'Bùi Thị Hoa',     '0949876543', 2, 1),
+('bao.driver@demo.com',  '123', 'Driver', 3, 'Đinh Quốc Bảo',   '0959876543', 2, 0);
  
 INSERT INTO Vehicles (DriverID, PlateNumber, VehicleType) VALUES
 (1, '59B1-123.45', 'Bike'),
