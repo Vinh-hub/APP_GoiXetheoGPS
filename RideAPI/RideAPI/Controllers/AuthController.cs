@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using MySqlConnector;
 using RideAPI.Models;
@@ -11,6 +12,7 @@ namespace RideAPI.Controllers
 {
     [Route("api/auth")]
     [ApiController] // API Controller: tự bind/validate request body
+    [AllowAnonymous] // Đăng nhập / đăng ký công khai; toàn API mặc định yêu cầu JWT (Program.cs).
     public class AuthController : ControllerBase
     {
         // Kết nối DB theo khu vực (NorthDB/SouthDB) dựa vào vĩ độ trong header.

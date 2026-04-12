@@ -62,6 +62,12 @@
                      Color="{AppThemeBinding Light={StaticResource DarkOnLightBackground}, Dark={StaticResource LightOnDarkBackground}}"
                      Size="{StaticResource IconSize}" />
 
+    <FontImageSource x:Key="IconTripTrack"
+                     Glyph="{x:Static f:FluentUI.vehicle_car_24_regular}"
+                     FontFamily="{x:Static f:FluentUI.FontFamily}"
+                     Color="{StaticResource Primary}"
+                     Size="{StaticResource IconSize}" />
+
     <FontImageSource x:Key="IconProjects"
                      Glyph="{x:Static f:FluentUI.list_24_regular}"
                      FontFamily="{x:Static f:FluentUI.FontFamily}"

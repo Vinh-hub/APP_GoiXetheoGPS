@@ -1,6 +1,28 @@
-@RideAPI_HostAddress = http://localhost:5136
+@baseUrl = https://localhost:7121
+# Sau khi chạy Login: copy giá trị "token" từ JSON response vào dòng dưới (chỉ chuỗi JWT, không có chữ Bearer).
+@driverJwt = PASTE_JWT_HERE
 
-GET {{RideAPI_HostAddress}}/weatherforecast/
-Accept: application/json
+### Đăng nhập tài xế (miền Nam — cùng DB với update-location dưới)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+X-User-Latitude: 10.8
 
-###
+{
+  "email": "khoa.driver@demo.com",
+  "password": "123"
+}
+
+### Cập nhật vị trí tài xế (JWT: header X-Jwt-Token hoặc Authorization: Bearer — cùng miền login)
+POST {{baseUrl}}/api/drivers/update-location
+X-Jwt-Token: {{driverJwt}}
+Content-Type: application/json
+X-User-Latitude: 10.8
+
+{
+  "latitude": 10.7769,
+  "longitude": 106.7009
+}
+
+### Tài xế gần đây (không cần JWT)
+GET {{baseUrl}}/api/drivers/nearby?latitude=10.7769&longitude=106.7009&radiusKm=10
+X-User-Latitude: 10.8

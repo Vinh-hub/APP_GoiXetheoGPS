@@ -2,6 +2,9 @@ CREATE DATABASE NorthDB;
 CREATE DATABASE SouthDB;
 SET NAMES utf8mb4;
 
+-- App khách (MAUI): danh sách chuyến trên UI đọc từ Data/trips_for_app.json (đóng gói cùng app).
+-- File SQL này là schema + seed MySQL (NorthDB/SouthDB); khi đổi seed Trips/Drivers/Vehicles, cập nhật JSON cho khớp.
+
 -- NORTHDB — Miền Bắc 
 USE NorthDB;
 
@@ -158,13 +161,37 @@ INSERT INTO Vehicles (DriverID, PlateNumber, VehicleType) VALUES
  
 INSERT INTO Trips (UserID, DriverID, Status, Price) VALUES
 (1, 1, 'Completed', 50000),
-(2, 2, 'Requested', 70000);
+(2, 2, 'Requested', 70000),
+(1, 3, 'Cancelled', 127000),
+(2, 1, 'Completed', 88000),
+(1, 2, 'Completed', 120000),
+(2, 3, 'Completed', 49000);
+
+INSERT INTO TripLocations (TripID, Latitude, Longitude, Address) VALUES
+(1, 21.0245, 105.8510, 'Vincom Bà Triệu, Hai Bà Trưng'),
+(1, 21.2181, 105.7898, 'Sân bay Nội Bài'),
+(2, 21.0284, 105.8010, 'Công ty ABC, Cầu Giấy'),
+(2, 21.0500, 105.8800, 'Nhà riêng, Long Biên'),
+(3, 21.0180, 105.8020, 'Big C Thăng Long'),
+(3, 21.0280, 105.7980, 'Cầu Giấy'),
+(4, 21.0240, 105.8520, 'Hồ Gươm'),
+(4, 21.0800, 105.8700, 'Vinhomes Riverside'),
+(5, 21.0010, 105.8200, 'Royal City'),
+(5, 21.0100, 105.8350, 'Times City'),
+(6, 21.0300, 105.7600, 'Lotte Center'),
+(6, 21.0250, 105.8450, 'AEON Long Biên');
  
 INSERT INTO Payments (TripID, Amount, Method, Status) VALUES
-(1, 50000, 'Cash', 'Paid');
+(1, 50000, 'Cash', 'Paid'),
+(4, 88000, 'Cash', 'Paid'),
+(5, 120000, 'Momo', 'Paid'),
+(6, 49000, 'Cash', 'Paid');
  
 INSERT INTO Reviews (TripID, Rating, Comment) VALUES
-(1, 5, 'Tài xế nhiệt tình, đúng giờ');
+(1, 5, 'Tài xế nhiệt tình, đúng giờ'),
+(4, 5, 'Rất tốt'),
+(5, 4, 'Ổn'),
+(6, 5, 'Nhanh');
  
 INSERT INTO DriverLocations (DriverID, Latitude, Longitude) VALUES
 (1, 21.03, 105.85),
@@ -328,13 +355,32 @@ INSERT INTO Vehicles (DriverID, PlateNumber, VehicleType) VALUES
  
 INSERT INTO Trips (UserID, DriverID, Status, Price) VALUES
 (1, 1, 'Completed', 45000),
-(2, 2, 'Requested', 60000);
+(2, 2, 'Requested', 60000),
+(1, 3, 'Cancelled', 95000),
+(2, 1, 'Completed', 52000),
+(1, 2, 'Completed', 38000);
+
+INSERT INTO TripLocations (TripID, Latitude, Longitude, Address) VALUES
+(1, 10.7945, 106.7219, 'Landmark 81, Bình Thạnh'),
+(1, 10.8188, 106.6519, 'Tân Sơn Nhất'),
+(2, 10.7769, 106.7009, 'Quận 1, TP.HCM'),
+(2, 10.8501, 106.7719, 'Thủ Đức'),
+(3, 10.7720, 106.6980, 'Chợ Gò Vấp'),
+(3, 10.8150, 106.6680, 'Sân bay TSN'),
+(4, 10.7600, 106.6800, 'Thủ Đức'),
+(4, 10.7300, 106.7180, 'Quận 7'),
+(5, 10.7800, 106.7050, 'Quận 10'),
+(5, 10.7900, 106.7120, 'Bình Thạnh');
  
 INSERT INTO Payments (TripID, Amount, Method, Status) VALUES
-(1, 45000, 'Cash', 'Paid');
+(1, 45000, 'Cash', 'Paid'),
+(4, 52000, 'Cash', 'Paid'),
+(5, 38000, 'Momo', 'Paid');
  
 INSERT INTO Reviews (TripID, Rating, Comment) VALUES
-(1, 4, 'Nhanh và đúng giờ');
+(1, 4, 'Nhanh và đúng giờ'),
+(4, 5, 'Chu đáo'),
+(5, 4, 'Ổn định');
  
 INSERT INTO DriverLocations (DriverID, Latitude, Longitude) VALUES
 (1, 10.78, 106.70),

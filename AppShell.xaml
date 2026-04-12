@@ -20,6 +20,12 @@
         ContentTemplate="{DataTemplate pages:HomeMapPage}"
         Route="map" />
 
+    <ShellContent
+        Title="Theo dõi chuyến"
+        Icon="{StaticResource IconTripTrack}"
+        ContentTemplate="{DataTemplate pages:TripTrackingPage}"
+        Route="trips" />
+
     <Shell.FlyoutFooter>
         <Grid Padding="15">
             <sf:SfSegmentedControl x:Name="ThemeSegmentedControl" 

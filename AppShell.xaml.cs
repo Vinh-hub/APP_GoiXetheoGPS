@@ -9,6 +9,7 @@ namespace APP_GoiXetheoGPS
         public AppShell()
         {
             InitializeComponent();
+            Routing.RegisterRoute("TripDetail", typeof(Pages.TripDetailPage));
             var currentTheme = Application.Current!.RequestedTheme;
             ThemeSegmentedControl.SelectedIndex = currentTheme == AppTheme.Light ? 0 : 1;
         }

@@ -1,1 +1,0 @@
-CẤU HÌNH MAPBOX TOKENANDROID EMULATOR / ANDROID DEVICE:Mở app → vào màn hình Bản đồKhi app báo thiếu token → dán token `pk...` → bấm LưuLần sau mở lại sẽ dùng token đã lưu (Preferences)KIỂM TRA ĐÃ SET CHƯAChạy lệnh PowerShell sau:[Environment]::GetEnvironmentVariable("MAPBOX_ACCESS_TOKEN","User")

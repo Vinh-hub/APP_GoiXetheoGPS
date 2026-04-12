@@ -116,6 +116,87 @@ namespace APP_GoiXetheoGPS.Pages
             await UpdateSuggestionsAsync(e.NewTextValue);
         }
 
+        private async void PickupEntry_OnCompleted(object? sender, EventArgs e)
+        {
+            _activeField = ActiveField.Pickup;
+            await SearchNamedPlaceForActiveFieldAsync(PickupEntry.Text);
+        }
+
+        private async void DropoffEntry_OnCompleted(object? sender, EventArgs e)
+        {
+            _activeField = ActiveField.Dropoff;
+            await SearchNamedPlaceForActiveFieldAsync(DropoffEntry.Text);
+        }
+
+        private async void PickupSearch_OnClicked(object? sender, EventArgs e)
+        {
+            _activeField = ActiveField.Pickup;
+            await SearchNamedPlaceForActiveFieldAsync(PickupEntry.Text);
+        }
+
+        private async void DropoffSearch_OnClicked(object? sender, EventArgs e)
+        {
+            _activeField = ActiveField.Dropoff;
+            await SearchNamedPlaceForActiveFieldAsync(DropoffEntry.Text);
+        }
+
+        /// <summary>
+        /// Gọi Mapbox, hiển thị danh sách nhiều địa điểm (vd: gõ Vincom / vincome) để khách chạm chọn — không tự chọn dòng đầu.
+        /// </summary>
+        private async Task SearchNamedPlaceForActiveFieldAsync(string? query)
+        {
+            query = (query ?? string.Empty).Trim();
+            if (query.Length < 2)
+            {
+                await DisplayAlertAsync("Tìm kiếm", "Nhập tên địa điểm (ít nhất 2 ký tự).", "OK");
+                return;
+            }
+
+            if (!MapboxConfig.TryGetAccessToken(out _) ||
+                string.Equals(MapboxConfig.AccessToken, "YOUR_MAPBOX_PUBLIC_TOKEN", StringComparison.Ordinal))
+            {
+                await DisplayAlertAsync(
+                    "Thiếu Mapbox token",
+                    "Cần cấu hình token Mapbox (pk.) để tìm địa điểm theo tên.",
+                    "OK");
+                return;
+            }
+
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                // autocomplete=true + nhiều limit: phù hợp gõ tắt / gần đúng, nhiều chi nhánh Vincom trong VN.
+                var items = await GeocodeAsync(query, cts.Token, limit: 10, autocomplete: true);
+                if (items.Count == 0)
+                {
+                    await DisplayAlertAsync(
+                        "Không tìm thấy",
+                        $"Không có kết quả cho \"{query}\". Thử tên khác hoặc thêm quận / thành phố.",
+                        "OK");
+                    SetSuggestions(Array.Empty<MapboxSuggestion>());
+                    return;
+                }
+
+                SetSuggestions(items);
+                if (_activeField == ActiveField.Pickup)
+                    PickupEntry.Unfocus();
+                else
+                    DropoffEntry.Unfocus();
+            }
+            catch (OperationCanceledException)
+            {
+                await DisplayAlertAsync("Tìm kiếm", "Hết thời gian chờ. Thử lại.", "OK");
+            }
+            catch (HttpRequestException)
+            {
+                await DisplayAlertAsync("Tìm kiếm", "Không gọi được Mapbox. Kiểm tra mạng hoặc token.", "OK");
+            }
+            catch
+            {
+                await DisplayAlertAsync("Tìm kiếm", "Có lỗi khi tìm địa điểm. Thử lại.", "OK");
+            }
+        }
+
         private void GpsButton_OnPanUpdated(object? sender, PanUpdatedEventArgs e)
         {
             if (sender is not VisualElement btn)
@@ -159,7 +240,7 @@ namespace APP_GoiXetheoGPS.Pages
                 var perm = await Permissions.RequestAsync<Permissions.LocationWhenInUse>();
                 if (perm != PermissionStatus.Granted)
                 {
-                    await DisplayAlert("Quyền vị trí", "Bạn cần cấp quyền vị trí để dùng chức năng này.", "OK");
+                    await DisplayAlertAsync("Quyền vị trí", "Bạn cần cấp quyền vị trí để dùng chức năng này.", "OK");
                     return;
                 }
 
@@ -167,7 +248,7 @@ namespace APP_GoiXetheoGPS.Pages
                 var location = await Geolocation.GetLocationAsync(request) ?? await Geolocation.GetLastKnownLocationAsync();
                 if (location is null)
                 {
-                    await DisplayAlert("Không lấy được vị trí", "Không thể lấy GPS. Hãy bật Location trên thiết bị/emulator và thử lại.", "OK");
+                    await DisplayAlertAsync("Không lấy được vị trí", "Không thể lấy GPS. Hãy bật Location trên thiết bị/emulator và thử lại.", "OK");
                     return;
                 }
 
@@ -212,27 +293,27 @@ namespace APP_GoiXetheoGPS.Pages
             }
             catch (FeatureNotSupportedException)
             {
-                await DisplayAlert("Không hỗ trợ", "Thiết bị không hỗ trợ định vị.", "OK");
+                await DisplayAlertAsync("Không hỗ trợ", "Thiết bị không hỗ trợ định vị.", "OK");
             }
             catch (FeatureNotEnabledException)
             {
-                await DisplayAlert("Chưa bật vị trí", "Bạn cần bật Location/GPS để dùng chức năng này.", "OK");
+                await DisplayAlertAsync("Chưa bật vị trí", "Bạn cần bật Location/GPS để dùng chức năng này.", "OK");
             }
             catch
             {
-                await DisplayAlert("Lỗi", "Có lỗi khi lấy vị trí hiện tại. Thử lại giúp mình nhé.", "OK");
+                await DisplayAlertAsync("Lỗi", "Có lỗi khi lấy vị trí hiện tại. Thử lại giúp mình nhé.", "OK");
             }
         }
 
         private async Task UpdateSuggestionsAsync(string? query)
         {
-            // Autocomplete: chỉ gọi Mapbox khi người dùng nhập >= 3 ký tự.
+            // Gợi ý khi gõ: từ 2 ký tự, danh sách nhiều địa điểm trong VN để khách chọn (giống bấm Tìm).
             _suggestCts?.Cancel();
             _suggestCts = new CancellationTokenSource();
             var ct = _suggestCts.Token;
 
             query = (query ?? string.Empty).Trim();
-            if (query.Length < 3)
+            if (query.Length < 2)
             {
                 SetSuggestions(Array.Empty<MapboxSuggestion>());
                 return;
@@ -242,7 +323,7 @@ namespace APP_GoiXetheoGPS.Pages
             {
                 // Debounce để giảm số lần gọi API khi người dùng gõ nhanh.
                 await Task.Delay(250, ct);
-                var items = await GeocodeAsync(query, ct);
+                var items = await GeocodeAsync(query, ct, limit: 10, autocomplete: true);
                 SetSuggestions(items);
             }
             catch (OperationCanceledException)
@@ -270,6 +351,11 @@ namespace APP_GoiXetheoGPS.Pages
             SuggestionsList.SelectedItem = null;
             SuggestionsContainer.IsVisible = false;
 
+            await ApplyMapboxSuggestionAsync(s);
+        }
+
+        private async Task ApplyMapboxSuggestionAsync(MapboxSuggestion s)
+        {
             var lngS = s.Lng.ToString(CultureInfo.InvariantCulture);
             var latS = s.Lat.ToString(CultureInfo.InvariantCulture);
 
@@ -299,18 +385,22 @@ namespace APP_GoiXetheoGPS.Pages
             UpdateSummary();
         }
 
-        private static async Task<IReadOnlyList<MapboxSuggestion>> GeocodeAsync(string query, CancellationToken ct)
+        private static async Task<IReadOnlyList<MapboxSuggestion>> GeocodeAsync(
+            string query,
+            CancellationToken ct,
+            int limit = 6,
+            bool autocomplete = true)
         {
             // Mapbox Forward Geocoding:
-            // - autocomplete=true để gợi ý khi gõ
-            // - language=vi để ưu tiên tiếng Việt (nếu có)
-            // - limit=6 để UI gọn
+            // - autocomplete=true: gợi ý khi gõ; false: chuỗi đủ dài / tìm một địa điểm cụ thể
+            // - language=vi; country=vn: chỉ kết quả trong Việt Nam
             var token = Uri.EscapeDataString(MapboxConfig.AccessToken);
             var q = Uri.EscapeDataString(query);
+            var auto = autocomplete ? "true" : "false";
 
             var url =
                 $"https://api.mapbox.com/geocoding/v5/mapbox.places/{q}.json" +
-                $"?access_token={token}&language=vi&limit=6&autocomplete=true";
+                $"?access_token={token}&language=vi&limit={limit}&autocomplete={auto}&country=vn";
 
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             using var res = await Http.SendAsync(req, ct);

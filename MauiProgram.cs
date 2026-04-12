@@ -40,6 +40,8 @@ namespace APP_GoiXetheoGPS
 
             builder.Services.AddSingleton<MainPage>();
             builder.Services.AddSingleton<HomeMapPage>();
+            builder.Services.AddSingleton<TripTrackingPage>();
+            builder.Services.AddTransient<TripDetailPage>();
 
             return builder.Build();
         }

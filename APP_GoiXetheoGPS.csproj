@@ -61,7 +61,14 @@
 		<MauiFont Include="Resources\Fonts\*" />
 
 		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+		<!-- Dữ liệu chuyến (chiếu từ seed APPGPS.sql — xem Data/trips_for_app.json) -->
+		<MauiAsset Include="Data\trips_for_app.json" LogicalName="trips_for_app.json" />
+
+		<!-- mapbox_token.txt đặt trong thư mục này → LogicalName mapbox_token.txt (khớp MapboxConfig) -->
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+		<!-- Mẫu hướng dẫn: không đóng gói vào app -->
+		<MauiAsset Remove="Resources\Raw\mapbox_token.sample.txt" />
+		<None Include="Resources\Raw\mapbox_token.sample.txt" />
 	</ItemGroup>
 
 	<ItemGroup>

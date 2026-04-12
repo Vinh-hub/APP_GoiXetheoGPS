@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:f="clr-namespace:Fonts"
+             x:Class="APP_GoiXetheoGPS.Pages.TripTrackingPage"
+             Title="Theo dõi chuyến"
+             BackgroundColor="{AppThemeBinding Light=#F5F7FA, Dark={StaticResource DarkBackground}}">
+
+    <Grid RowDefinitions="Auto,*" Padding="0,8,0,0">
+        <Label Grid.Row="0"
+               Margin="20,4,20,12"
+               Style="{StaticResource Body2}"
+               Text="Danh sách chuyến"
+               TextColor="{AppThemeBinding Light=#5A6578, Dark=#AAB4C5}" />
+
+        <CollectionView x:Name="TripsCollection"
+                        Grid.Row="1"
+                        IsGrouped="True"
+                        SelectionChanged="TripsCollection_SelectionChanged"
+                        SelectionMode="Single">
+            <CollectionView.GroupHeaderTemplate>
+                <DataTemplate>
+                    <Label Padding="20,16,20,8"
+                           Style="{StaticResource Body2Strong}"
+                           Text="{Binding MonthTitle}"
+                           TextColor="{StaticResource Primary}" />
+                </DataTemplate>
+            </CollectionView.GroupHeaderTemplate>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <VerticalStackLayout Padding="20,8,20,0" Spacing="0">
+                        <Grid ColumnDefinitions="Auto,*"
+                              ColumnSpacing="14"
+                              RowDefinitions="Auto,Auto,Auto"
+                              RowSpacing="2">
+                            <Border Grid.RowSpan="3"
+                                    Grid.Column="0"
+                                    Padding="0"
+                                    HeightRequest="48"
+                                    WidthRequest="48"
+                                    StrokeThickness="0"
+                                    VerticalOptions="Start">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="24" />
+                                </Border.StrokeShape>
+                                <Border.Background>
+                                    <SolidColorBrush Color="{StaticResource Primary}" />
+                                </Border.Background>
+                                <Image Margin="0"
+                                       HeightRequest="26"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"
+                                       WidthRequest="26">
+                                    <Image.Source>
+                                        <FontImageSource FontFamily="{x:Static f:FluentUI.FontFamily}"
+                                                         Glyph="{x:Static f:FluentUI.vehicle_car_24_regular}"
+                                                         Color="White"
+                                                         Size="26" />
+                                    </Image.Source>
+                                </Image>
+                            </Border>
+
+                            <Label Grid.Row="0"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body2Strong}"
+                                   Text="{Binding RouteLine}"
+                                   TextColor="{AppThemeBinding Light=#111827, Dark={StaticResource LightOnDarkBackground}}" />
+
+                            <Label Grid.Row="1"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Caption1}"
+                                   Text="{Binding WhenDisplay}"
+                                   TextColor="{AppThemeBinding Light=#6B7280, Dark=#9CA3AF}" />
+
+                            <Label Grid.Row="2"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Caption1}"
+                                   Text="{Binding Status}"
+                                   TextColor="{StaticResource Primary}" />
+
+                        </Grid>
+
+                        <BoxView Margin="0,14,0,0"
+                                 HeightRequest="1"
+                                 Color="{AppThemeBinding Light=#E5E7EB, Dark=#2A2A32}" />
+                    </VerticalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentPage>

@@ -1,0 +1,125 @@
+{
+  "trips": [
+    {
+      "id": "north-trip-1",
+      "from": "Vincom Bà Triệu, Hai Bà Trưng",
+      "to": "Sân bay Nội Bài",
+      "whenLocal": "2024-07-20T16:39:00",
+      "driverName": "Phạm Minh Tuấn",
+      "vehicleInfo": "Xe máy · 29B1-123.45",
+      "priceVnd": 50000,
+      "status": "Hoàn thành",
+      "sqlRef": "NorthDB.Trips TripID=1 (UserID=1, DriverID=1, Completed, 50000); TripLocations; Payments; Reviews"
+    },
+    {
+      "id": "north-trip-2",
+      "from": "Công ty ABC, Cầu Giấy",
+      "to": "Nhà riêng, Long Biên",
+      "whenLocal": "2024-09-15T09:20:00",
+      "driverName": "Đỗ Quang Huy",
+      "vehicleInfo": "Ô tô · 30A-123.45",
+      "priceVnd": 70000,
+      "status": "Đang chạy",
+      "sqlRef": "NorthDB.Trips TripID=2 (UserID=2, DriverID=2, Requested, 70000); TripLocations"
+    },
+    {
+      "id": "north-trip-3",
+      "from": "Big C Thăng Long",
+      "to": "Cầu Giấy",
+      "whenLocal": "2024-09-10T17:22:00",
+      "driverName": "Vũ Đức Thắng",
+      "vehicleInfo": "Xe điện · 29F1-234.56",
+      "priceVnd": 127000,
+      "status": "Đã hủy",
+      "sqlRef": "NorthDB.Trips TripID=3 (UserID=1, DriverID=3, Cancelled, 127000); TripLocations"
+    },
+    {
+      "id": "north-trip-4",
+      "from": "Hồ Gươm",
+      "to": "Vinhomes Riverside",
+      "whenLocal": "2024-08-18T14:10:00",
+      "driverName": "Phạm Minh Tuấn",
+      "vehicleInfo": "Xe máy · 29B1-123.45",
+      "priceVnd": 88000,
+      "status": "Hoàn thành",
+      "sqlRef": "NorthDB.Trips TripID=4 (UserID=2, DriverID=1, Completed, 88000); TripLocations; Payments; Reviews"
+    },
+    {
+      "id": "north-trip-5",
+      "from": "Royal City",
+      "to": "Times City",
+      "whenLocal": "2024-08-05T19:00:00",
+      "driverName": "Đỗ Quang Huy",
+      "vehicleInfo": "Ô tô · 30A-123.45",
+      "priceVnd": 120000,
+      "status": "Hoàn thành",
+      "sqlRef": "NorthDB.Trips TripID=5 (UserID=1, DriverID=2, Completed, 120000); TripLocations; Payments; Reviews"
+    },
+    {
+      "id": "north-trip-6",
+      "from": "Lotte Center",
+      "to": "AEON Long Biên",
+      "whenLocal": "2024-07-28T11:25:00",
+      "driverName": "Vũ Đức Thắng",
+      "vehicleInfo": "Xe điện · 29F1-234.56",
+      "priceVnd": 49000,
+      "status": "Hoàn thành",
+      "sqlRef": "NorthDB.Trips TripID=6 (UserID=2, DriverID=3, Completed, 49000); TripLocations; Payments; Reviews"
+    },
+    {
+      "id": "south-trip-1",
+      "from": "Landmark 81, Bình Thạnh",
+      "to": "Tân Sơn Nhất",
+      "whenLocal": "2024-08-02T19:05:00",
+      "driverName": "Trương Văn Khoa",
+      "vehicleInfo": "Xe máy · 59B1-123.45",
+      "priceVnd": 45000,
+      "status": "Hoàn thành",
+      "sqlRef": "SouthDB.Trips TripID=1 (UserID=1, DriverID=1, Completed, 45000); TripLocations; Payments; Reviews"
+    },
+    {
+      "id": "south-trip-2",
+      "from": "Quận 1, TP.HCM",
+      "to": "Thủ Đức",
+      "whenLocal": "2024-09-01T12:40:00",
+      "driverName": "Bùi Thị Hoa",
+      "vehicleInfo": "Ô tô · 51A-123.45",
+      "priceVnd": 60000,
+      "status": "Đang chạy",
+      "sqlRef": "SouthDB.Trips TripID=2 (UserID=2, DriverID=2, Requested, 60000); TripLocations"
+    },
+    {
+      "id": "south-trip-3",
+      "from": "Chợ Gò Vấp",
+      "to": "Sân bay TSN",
+      "whenLocal": "2024-09-12T08:45:00",
+      "driverName": "Đinh Quốc Bảo",
+      "vehicleInfo": "Xe điện · 59F1-234.56",
+      "priceVnd": 95000,
+      "status": "Đã hủy",
+      "sqlRef": "SouthDB.Trips TripID=3 (UserID=1, DriverID=3, Cancelled, 95000); TripLocations"
+    },
+    {
+      "id": "south-trip-4",
+      "from": "Thủ Đức",
+      "to": "Quận 7",
+      "whenLocal": "2024-08-22T16:50:00",
+      "driverName": "Trương Văn Khoa",
+      "vehicleInfo": "Xe máy · 59B1-123.45",
+      "priceVnd": 52000,
+      "status": "Hoàn thành",
+      "sqlRef": "SouthDB.Trips TripID=4 (UserID=2, DriverID=1, Completed, 52000); TripLocations; Payments; Reviews"
+    },
+    {
+      "id": "south-trip-5",
+      "from": "Quận 10",
+      "to": "Bình Thạnh",
+      "whenLocal": "2024-07-14T07:30:00",
+      "driverName": "Bùi Thị Hoa",
+      "vehicleInfo": "Ô tô · 51A-123.45",
+      "priceVnd": 38000,
+      "status": "Hoàn thành",
+      "sqlRef": "SouthDB.Trips TripID=5 (UserID=1, DriverID=2, Completed, 38000); TripLocations; Payments; Reviews"
+    }
+  ]
+}
