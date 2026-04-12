@@ -69,6 +69,7 @@
 		<!-- Mẫu hướng dẫn: không đóng gói vào app -->
 		<MauiAsset Remove="Resources\Raw\mapbox_token.sample.txt" />
 		<None Include="Resources\Raw\mapbox_token.sample.txt" />
+		<None Include="RideAPI.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -80,6 +81,7 @@
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 		<PackageReference Include="CommunityToolkit.Maui" Version="12.3.0" />
 		<PackageReference Include="Microsoft.Data.Sqlite.Core" Version="8.0.8" />
+		<PackageReference Include="MySql.Data" Version="9.6.0" />
 		<PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.10" />
 		<PackageReference Include="Syncfusion.Maui.Toolkit" Version="1.0.8" />
 	</ItemGroup>
@@ -90,6 +92,11 @@
 		<EmbeddedResource Remove="RideAPI\**\*" />
 		<Content Remove="RideAPI\**\*" />
 		<None Remove="RideAPI\**\*" />
+	</ItemGroup>
+	<ItemGroup>
+	  <MauiXaml Update="Pages\MainPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
 	</ItemGroup>
 	
 </Project>

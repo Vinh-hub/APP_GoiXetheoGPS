@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using APP_GoiXetheoGPS.Configuration;
+using APP_GoiXetheoGPS.Services;
 
 namespace APP_GoiXetheoGPS.Pages
 {
@@ -513,6 +514,44 @@ namespace APP_GoiXetheoGPS.Pages
                 parts.Add($"Đến: {dlat.ToString("F5", CultureInfo.InvariantCulture)}, {dlng.ToString("F5", CultureInfo.InvariantCulture)}");
 
             SummaryLabel.Text = parts.Count > 0 ? string.Join(" · ", parts) : "Chưa chọn điểm.";
+        }
+
+        private async void DemoDbButton_OnClicked(object? sender, EventArgs e)
+        {
+            await ShowDistributedDatabaseStatsAsync();
+        }
+
+        private async Task ShowDistributedDatabaseStatsAsync()
+        {
+            try
+            {
+                // Get database stats
+                var stats = await DistributedDatabaseService.GetDatabaseStatsAsync();
+
+                // Build message
+                var message = "Distributed Database Stats:\n\n";
+                foreach (var stat in stats)
+                {
+                    message += $"{stat.DatabaseName}: {stat.RecordCount:N0} records\n";
+                }
+                message += $"\nUpdated: {DateTime.Now:HH:mm:ss}";
+
+                // Save stats for future reference
+                await DistributedDatabaseService.SaveStatsAsync(stats);
+
+                // Show alert
+                await DisplayAlert(
+                    "Database Statistics",
+                    message,
+                    "OK");
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert(
+                    "Error",
+                    $"Failed to fetch database stats: {ex.Message}",
+                    "OK");
+            }
         }
     }
 }
