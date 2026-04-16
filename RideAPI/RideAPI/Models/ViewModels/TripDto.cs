@@ -1,10 +1,10 @@
-﻿namespace RideAPI.Models
+namespace RideAPI.Models.ViewModels
 {
-    public class Trip
+    public class TripDto
     {
-        public int TripID { get; set; }
-        public int UserID { get; set; }
-        public int DriverID { get; set; }
+        public int TripId { get; set; }
+        public int UserId { get; set; }
+        public int DriverId { get; set; }
         public string Status { get; set; }
         public decimal Price { get; set; }
         public double? StartLat { get; set; }
@@ -13,7 +13,7 @@
         public double? EndLng { get; set; }
         public decimal? PaymentAmount { get; set; }
         public int? DriverRating { get; set; }
-        public string? DriverComment { get; set; }
+        public string DriverComment { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

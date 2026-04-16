@@ -34,8 +34,7 @@ namespace RideAPI.Controllers
             if (request is null)
                 return BadRequest(new { message = "Thiếu body JSON." });
 
-            if (double.IsNaN(request.Latitude) || double.IsNaN(request.Longitude) ||
-                double.IsInfinity(request.Latitude) || double.IsInfinity(request.Longitude))
+            if (!IsValidLatitude(request.Latitude) || !IsValidLongitude(request.Longitude))
                 return BadRequest(new { message = "Tọa độ không hợp lệ." });
 
             double lat = GetLatitude(userLatitude);
@@ -90,8 +89,7 @@ namespace RideAPI.Controllers
             [FromQuery] double radiusKm = 10,
             [FromQuery] int limit = 20)
         {
-            if (double.IsNaN(latitude) || double.IsNaN(longitude) ||
-                double.IsInfinity(latitude) || double.IsInfinity(longitude))
+            if (!IsValidLatitude(latitude) || !IsValidLongitude(longitude))
                 return BadRequest(new { message = "Tham số latitude/longitude không hợp lệ." });
 
             if (radiusKm <= 0 || radiusKm > 500)
@@ -186,16 +184,23 @@ LIMIT @limit";
 
         private double GetLatitude(double? userLatitude)
         {
-            if (userLatitude is double latFromParam)
+            if (userLatitude is double latFromParam && IsValidLatitude(latFromParam))
                 return latFromParam;
 
             if (Request.Headers.TryGetValue("X-User-Latitude", out var val) &&
                 double.TryParse(val, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out var lat))
+                    System.Globalization.CultureInfo.InvariantCulture, out var lat) &&
+                IsValidLatitude(lat))
                 return lat;
 
             return 10.8;
         }
+
+        private static bool IsValidLatitude(double latitude)
+            => !double.IsNaN(latitude) && !double.IsInfinity(latitude) && latitude >= -90 && latitude <= 90;
+
+        private static bool IsValidLongitude(double longitude)
+            => !double.IsNaN(longitude) && !double.IsInfinity(longitude) && longitude >= -180 && longitude <= 180;
     }
 }
 

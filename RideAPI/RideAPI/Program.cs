@@ -6,11 +6,12 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using RideAPI.Services;
 using RideAPI.Swagger;
+using RideAPI.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
-
 // Add services
-builder.Services.AddControllers();
+//builder.Services.AddControllers();
+builder.Services.AddControllersWithViews();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -42,6 +43,17 @@ builder.Services.AddSwaggerGen(options =>
 
 // App services
 builder.Services.AddSingleton<DatabaseService>();
+builder.Services.AddScoped<DbRetryService>();
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
+
+builder.Services.AddHttpClient();
+
 
 // JWT: phải trùng Jwt:* trong appsettings.json với AuthController (ký + kiểm token).
 var jwtKey = builder.Configuration["Jwt:Key"]
@@ -108,13 +120,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// Mặc định mọi endpoint cần user đã xác thực (JWT); chỉ endpoint có [AllowAnonymous] là công khai.
-builder.Services.AddAuthorization(options =>
-{
-    options.FallbackPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
-        .RequireAuthenticatedUser()
-        .Build();
-});
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -127,9 +133,17 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseRouting();
+
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseSession();
+app.UseStaticFiles();
+app.UseMiddleware<LocationRoutingMiddleware>();
 
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
 app.MapControllers();
 
 app.Run();

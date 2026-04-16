@@ -3,10 +3,11 @@
     public class Driver
     {
         public int DriverID { get; set; }
-        public string Name { get; set; } = string.Empty;
-        public double Latitude { get; set; }
-        public double Longitude { get; set; }
-        public bool IsAvailable { get; set; }
+        public string Name { get; set; }
+        public string Phone { get; set; }
+        public string Status { get; set; }
         public int RegionID { get; set; }
+        public bool IsActive { get; set; }
+        public float AvgRating { get; set; }
     }
 }

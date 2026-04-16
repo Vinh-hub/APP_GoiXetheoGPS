@@ -1,0 +1,123 @@
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using MySqlConnector;
+using RideAPI.Models;
+using RideAPI.Services;
+
+namespace RideAPI.Controllers
+{
+    [ApiController]
+    [Route("api/trips")]
+    [Authorize]
+    public class TripController : ControllerBase
+    {
+        private readonly TripService _tripService;
+        private readonly IWebHostEnvironment _env;
+
+        public TripController(TripService tripService, IWebHostEnvironment env)
+        {
+            _tripService = tripService;
+            _env = env;
+        }
+
+        [HttpPost("request")]
+        public IActionResult RequestTrip([FromBody] TripRequestDto request)
+        {
+            if (request is null)
+                return BadRequest(new { message = "Thiếu body JSON." });
+
+            if (request.UserID <= 0 || request.Price < 0 || !IsValidLatitude(request.Latitude))
+                return BadRequest(new { message = "Dữ liệu chuyến đi không hợp lệ." });
+
+            try
+            {
+                _tripService.RequestTrip(request);
+                return Ok(new { message = "Trip created" });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(503, new
+                {
+                    message = "Lỗi kết nối CSDL khu vực.",
+                    detail = _env.IsDevelopment() ? ex.Message : null
+                });
+            }
+        }
+
+        [HttpGet("{id}")]
+        public IActionResult GetTrip(int id, [FromQuery] double latitude)
+        {
+            if (id <= 0 || !IsValidLatitude(latitude))
+                return BadRequest(new { message = "Tham số không hợp lệ." });
+
+            try
+            {
+                var trip = _tripService.GetTrip(id, latitude);
+
+                if (trip == null)
+                    return NotFound(new { message = "Trip not found" });
+
+                return Ok(trip);
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(503, new
+                {
+                    message = "Lỗi kết nối CSDL khu vực.",
+                    detail = _env.IsDevelopment() ? ex.Message : null
+                });
+            }
+        }
+
+        [HttpPost("accept")]
+        public IActionResult AcceptTrip([FromBody] AcceptTripDto request)
+        {
+            if (request is null)
+                return BadRequest(new { message = "Thiếu body JSON." });
+
+            if (request.TripID <= 0 || request.DriverID <= 0 || !IsValidLatitude(request.Latitude))
+                return BadRequest(new { message = "Dữ liệu nhận chuyến không hợp lệ." });
+
+            try
+            {
+                _tripService.AcceptTrip(request);
+                return Ok(new { message = "Trip accepted" });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(503, new
+                {
+                    message = "Lỗi kết nối CSDL khu vực.",
+                    detail = _env.IsDevelopment() ? ex.Message : null
+                });
+            }
+        }
+
+        [HttpPost("complete")]
+        public IActionResult CompleteTrip([FromBody] CompleteTripDto request)
+        {
+            if (request is null)
+                return BadRequest(new { message = "Thiếu body JSON." });
+
+            if (request.TripID <= 0 || request.FinalPrice < 0 || !IsValidLatitude(request.Latitude))
+                return BadRequest(new { message = "Dữ liệu hoàn tất chuyến không hợp lệ." });
+
+            try
+            {
+                _tripService.CompleteTrip(request);
+                return Ok(new { message = "Trip completed" });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(503, new
+                {
+                    message = "Lỗi kết nối CSDL khu vực.",
+                    detail = _env.IsDevelopment() ? ex.Message : null
+                });
+            }
+        }
+
+        private static bool IsValidLatitude(double latitude)
+            => !double.IsNaN(latitude) && !double.IsInfinity(latitude) && latitude >= -90 && latitude <= 90;
+    }
+}
