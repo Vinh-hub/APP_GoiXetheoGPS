@@ -4,14 +4,19 @@
              x:Class="APP_GoiXetheoGPS.Pages.HomeMapPage"
              Title="Bản đồ">
 
-    <Grid>
+    <!-- Row 0 = vùng map (*): Android cần chiều cao xác định để WebGL/Mapbox vẽ tile; Row 1 = panel dưới (Auto). -->
+    <Grid RowDefinitions="*,Auto">
         <HybridWebView x:Name="MapHybrid"
+                       Grid.Row="0"
                        HybridRoot="wwwroot"
                        DefaultFile="mapbox-home.html"
+                       HorizontalOptions="Fill"
+                       VerticalOptions="Fill"
                        RawMessageReceived="MapHybrid_OnRawMessageReceived" />
 
         <!-- Floating "current location" button (draggable vertically + tappable) -->
         <Button x:Name="GpsButton"
+                Grid.Row="0"
                 Text="GPS"
                 WidthRequest="44"
                 HeightRequest="44"
@@ -31,7 +36,8 @@
         </Button>
 
         <!-- Bottom sheet (like the mock) -->
-        <Border Margin="12,0,12,16"
+        <Border Grid.Row="1"
+                Margin="12,0,12,16"
                 VerticalOptions="End"
                 StrokeThickness="0"
                 Padding="14,14"

@@ -22,8 +22,21 @@ public static class MapboxConfig
     {
         get
         {
-            return TryGetAccessToken(out _);
+            return TryGetAccessToken(out var t) && LooksLikeMapboxPublicToken(t);
         }
+    }
+
+    /// <summary>
+    /// Token công khai Mapbox thường bắt đầu bằng pk. và khá dài; dùng để tránh gọi startMap với token rỗng/giả.
+    /// </summary>
+    public static bool LooksLikeMapboxPublicToken(string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return false;
+        var t = token.Trim();
+        if (t.Equals("YOUR_MAPBOX_PUBLIC_TOKEN", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return t.StartsWith("pk.", StringComparison.OrdinalIgnoreCase) && t.Length >= 50;
     }
 
     public static bool TryGetAccessToken(out string token)
@@ -76,7 +89,7 @@ public static class MapboxConfig
 
         foreach (var line in raw.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
         {
-            var t = line.Trim();
+            var t = line.Trim().TrimStart('\ufeff');
             if (t.Length == 0 || t.StartsWith('#'))
                 continue;
             return t;

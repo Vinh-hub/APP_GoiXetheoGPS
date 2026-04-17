@@ -3,6 +3,12 @@ using MySqlConnector;
 
 namespace RideAPI.Services
 {
+    /// <summary>
+    /// Mô hình triển khai mặc định: một MySQL (XAMPP), hai schema NorthDB / SouthDB.
+    /// Master và Replica dùng chung host nếu không ghi ConnectionStrings đầy đủ — failover vẫn do code
+    /// (đọc: thử master rồi replica; ghi: chỉ master, lỗi nếu master không ping được).
+    /// Để demo failover đọc sang “replica” khác: đặt NorthReplica / SouthReplica thành chuỗi kết nối thật (máy khác hoặc user read-only).
+    /// </summary>
     public class DatabaseService
     {
         private readonly string _northMasterConn;
@@ -10,24 +16,25 @@ namespace RideAPI.Services
         private readonly string _southMasterConn;
         private readonly string _southReplicaConn;
 
-        public DatabaseService()
-        {
-            _northMasterConn = "Server=localhost;Database=NorthDB;User=root;Password=123456;";
-            _northReplicaConn = "Server=localhost;Database=NorthDB;User=root;Password=123456;";
-            _southMasterConn = "Server=localhost;Database=SouthDB;User=root;Password=123456;";
-            _southReplicaConn = "Server=localhost;Database=SouthDB;User=root;Password=123456;";
-        }
-
         public DatabaseService(IConfiguration config)
         {
-            _northMasterConn = config.GetConnectionString("NorthMaster")
-                ?? "Server=localhost;Database=NorthDB;User=root;Password=123456;";
-            _northReplicaConn = config.GetConnectionString("NorthReplica")
-                ?? "Server=localhost;Database=NorthDB;User=root;Password=123456;";
-            _southMasterConn = config.GetConnectionString("SouthMaster")
-                ?? "Server=localhost;Database=SouthDB;User=root;Password=123456;";
-            _southReplicaConn = config.GetConnectionString("SouthReplica")
-                ?? "Server=localhost;Database=SouthDB;User=root;Password=123456;";
+            var host = config["DistributedDb:Host"] ?? "127.0.0.1";
+            var port = config["DistributedDb:Port"] ?? "3306";
+            var user = config["DistributedDb:User"] ?? "root";
+            var password = config["DistributedDb:Password"] ?? "";
+            var northDb = config["DistributedDb:NorthDatabase"] ?? "NorthDB";
+            var southDb = config["DistributedDb:SouthDatabase"] ?? "SouthDB";
+
+            string BuildConn(string database) =>
+                $"Server={host};Port={port};Database={database};User={user};Password={password};";
+
+            static string? EffectiveConn(string? value) =>
+                string.IsNullOrWhiteSpace(value) ? null : value;
+
+            _northMasterConn = EffectiveConn(config.GetConnectionString("NorthMaster")) ?? BuildConn(northDb);
+            _southMasterConn = EffectiveConn(config.GetConnectionString("SouthMaster")) ?? BuildConn(southDb);
+            _northReplicaConn = EffectiveConn(config.GetConnectionString("NorthReplica")) ?? _northMasterConn;
+            _southReplicaConn = EffectiveConn(config.GetConnectionString("SouthReplica")) ?? _southMasterConn;
         }
 
         // Phương thức async dùng cho DbRetryService (hỗ trợ master/replica & failover)

@@ -1,0 +1,14 @@
+-- Chay tren MASTER moi vung, doi subnet cho phu hop.
+CREATE USER IF NOT EXISTS 'repl'@'192.168.%' IDENTIFIED BY 'repl@123';
+GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'repl'@'192.168.%';
+FLUSH PRIVILEGES;
+
+-- Chay tren SLAVE sau khi restore dump:
+-- STOP SLAVE;
+-- CHANGE MASTER TO
+--   MASTER_HOST='192.168.1.10',
+--   MASTER_USER='repl',
+--   MASTER_PASSWORD='repl@123',
+--   MASTER_AUTO_POSITION=1;
+-- START SLAVE;
+-- SHOW SLAVE STATUS\G

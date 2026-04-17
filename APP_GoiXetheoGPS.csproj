@@ -68,8 +68,14 @@
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
 		<!-- Mẫu hướng dẫn: không đóng gói vào app -->
 		<MauiAsset Remove="Resources\Raw\mapbox_token.sample.txt" />
-		<None Include="Resources\Raw\mapbox_token.sample.txt" />
-		<None Include="RideAPI.csproj" />
+	</ItemGroup>
+
+	<!-- infra: cấu hình Linux (MySQL + Keepalived) kèm đồ án — không đóng gói vào app -->
+	<ItemGroup>
+		<MauiAsset Remove="infra\**\*" />
+		<Content Remove="infra\**\*" />
+		<EmbeddedResource Remove="infra\**\*" />
+		<Compile Remove="infra\**\*" />
 	</ItemGroup>
 
 	<ItemGroup>

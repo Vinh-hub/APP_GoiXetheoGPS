@@ -17,9 +17,23 @@
         let pickupMarker = null;
         let dropoffMarker = null;
 
+        function sendToHost(obj) {
+            try {
+                if (window.HybridWebView && typeof window.HybridWebView.SendRawMessage === 'function')
+                    window.HybridWebView.SendRawMessage(JSON.stringify(obj));
+            } catch (e) { }
+        }
+
         function startMap(token) {
-            // Khởi tạo bản đồ Mapbox (chỉ chạy 1 lần).
-            if (map) return;
+            if (!token || typeof token !== 'string' || token.length < 50) {
+                sendToHost({ type: 'mapError', message: 'Token Mapbox không hợp lệ hoặc quá ngắn.' });
+                return;
+            }
+            // Nếu lần trước lỗi (401 URL restriction, mạng…) map có thể tồn tại nhưng trắng — cho phép remove và thử lại.
+            if (map) {
+                try { map.remove(); } catch (e) { }
+                map = null;
+            }
             mapboxgl.accessToken = token;
             map = new mapboxgl.Map({
                 container: 'map',
@@ -28,6 +42,25 @@
                 zoom: 12
             });
             map.addControl(new mapboxgl.NavigationControl());
+            // Android WebView: lần đo layout đầu thường 0×0 → tile trắng; resize sau load / delay.
+            map.on('load', function () {
+                map.resize();
+                setTimeout(function () { try { map.resize(); } catch (e) { } }, 120);
+                setTimeout(function () { try { map.resize(); } catch (e) { } }, 450);
+                setTimeout(function () { try { map.resize(); } catch (e) { } }, 1200);
+            });
+            window.__mapboxResizeMap = function () {
+                try { if (map && map.resize) map.resize(); } catch (e) { }
+            };
+            window.addEventListener('resize', function () {
+                window.__mapboxResizeMap();
+            });
+            map.on('error', function (e) {
+                var msg = (e && e.error && e.error.message) ? e.error.message : String(e && e.error ? e.error : e);
+                sendToHost({ type: 'mapError', message: msg });
+                try { map.remove(); } catch (x) { }
+                map = null;
+            });
             map.on('click', function (e) {
                 // Khi người dùng chạm bản đồ => gửi lat/lng qua C# để app quyết định là điểm đón hay điểm đến.
                 var msg = JSON.stringify({

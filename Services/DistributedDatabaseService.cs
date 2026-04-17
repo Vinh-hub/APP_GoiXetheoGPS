@@ -1,5 +1,6 @@
 using MySql.Data.MySqlClient;
 using System.Text.Json;
+using Microsoft.Maui.Devices;
 using Microsoft.Maui.Storage;
 
 namespace APP_GoiXetheoGPS.Services;
@@ -12,11 +13,21 @@ public static class DistributedDatabaseService
     /// ================================
     /// CONFIG DATABASE CONNECTION
     /// ================================
-    private const string DB1_CONNECTION =
-        "Server=127.0.0.1;Port=3306;Database=northdb;Uid=root;Pwd=123456;";
+    /// <summary>
+    /// Android Emulator: 127.0.0.1 là chính emulator — MySQL trên PC phải dùng 10.0.2.2 (alias tới host).
+    /// Điện thoại thật: đổi thành IP LAN của PC (ví dụ 192.168.1.5) trong my.ini / connection string tương ứng.
+    /// </summary>
+    private static string DbHost =>
+        DeviceInfo.Current.Platform == DevicePlatform.Android
+            ? "10.0.2.2"
+            : "127.0.0.1";
 
-    private const string DB2_CONNECTION =
-        "Server=127.0.0.1;Port=3306;Database=southdb;Uid=root;Pwd=123456;";
+    // Trùng tên schema trong Data/APPGPS.sql và RideAPI appsettings.json (DistributedDb).
+    private static string Db1Connection =>
+        $"Server={DbHost};Port=3306;Database=NorthDB;Uid=root;Pwd=;";
+
+    private static string Db2Connection =>
+        $"Server={DbHost};Port=3306;Database=SouthDB;Uid=root;Pwd=;";
 
     public sealed record DatabaseStats(
         string DatabaseName,
@@ -32,8 +43,8 @@ public static class DistributedDatabaseService
         var stats = new List<DatabaseStats>();
 
         var db1Count = await GetRealRecordCountAsync(
-            DB1_CONNECTION,
-            "users",
+            Db1Connection,
+            "Users",
             cancellationToken);
 
         stats.Add(new DatabaseStats(
@@ -42,8 +53,8 @@ public static class DistributedDatabaseService
             DateTime.Now));
 
         var db2Count = await GetRealRecordCountAsync(
-            DB2_CONNECTION,
-            "users",
+            Db2Connection,
+            "Users",
             cancellationToken);
 
         stats.Add(new DatabaseStats(
@@ -59,7 +70,7 @@ public static class DistributedDatabaseService
     /// ================================
     public static async Task<DatabaseStats> GetPrimaryDatabaseStatsAsync()
     {
-        var count = await GetRealRecordCountAsync(DB1_CONNECTION, "users");
+        var count = await GetRealRecordCountAsync(Db1Connection, "Users");
 
         return new DatabaseStats(
             "DB1 (Primary)",
@@ -72,7 +83,7 @@ public static class DistributedDatabaseService
     /// ================================
     public static async Task<DatabaseStats> GetSecondaryDatabaseStatsAsync()
     {
-        var count = await GetRealRecordCountAsync(DB2_CONNECTION, "users");
+        var count = await GetRealRecordCountAsync(Db2Connection, "Users");
 
         return new DatabaseStats(
             "DB2 (Replica)",

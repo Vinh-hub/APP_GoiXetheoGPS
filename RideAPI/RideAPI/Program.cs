@@ -43,6 +43,7 @@ builder.Services.AddSwaggerGen(options =>
 
 // App services
 builder.Services.AddSingleton<DatabaseService>();
+builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<DbRetryService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>

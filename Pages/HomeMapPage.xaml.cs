@@ -65,6 +65,34 @@ namespace APP_GoiXetheoGPS.Pages
             base.OnAppearing();
             ApplySelectionStyle();
             SetActiveEntryVisibility();
+            _ = MapResizeAfterLayoutAsync();
+        }
+
+        /// <summary>
+        /// Sau khi Shell đo layout xong, WebView trên Android thường cần map.resize() mới vẽ tile.
+        /// </summary>
+        private async Task MapResizeAfterLayoutAsync()
+        {
+            try
+            {
+                await Task.Delay(600);
+                await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    try
+                    {
+                        await MapHybrid.EvaluateJavaScriptAsync(
+                            "if(typeof window.__mapboxResizeMap==='function')window.__mapboxResizeMap();");
+                    }
+                    catch
+                    {
+                        /* map chưa init */
+                    }
+                });
+            }
+            catch
+            {
+                /* ignore */
+            }
         }
 
         private void ApplySelectionStyle()
@@ -153,12 +181,12 @@ namespace APP_GoiXetheoGPS.Pages
                 return;
             }
 
-            if (!MapboxConfig.TryGetAccessToken(out _) ||
-                string.Equals(MapboxConfig.AccessToken, "YOUR_MAPBOX_PUBLIC_TOKEN", StringComparison.Ordinal))
+            if (!MapboxConfig.TryGetAccessToken(out var geocodeToken) ||
+                !MapboxConfig.LooksLikeMapboxPublicToken(geocodeToken))
             {
                 await DisplayAlertAsync(
                     "Thiếu Mapbox token",
-                    "Cần cấu hình token Mapbox (pk.) để tìm địa điểm theo tên.",
+                    "Vào tab Bản đồ và nhập public token (pk...) khi được hỏi, hoặc tạo Resources/Raw/mapbox_token.txt — xem mapbox_token.sample.txt.",
                     "OK");
                 return;
             }
@@ -449,28 +477,63 @@ namespace APP_GoiXetheoGPS.Pages
                     var type = root.GetProperty("type").GetString();
                     if (type == "ready")
                     {
-                        // Truyền token từ C# sang JS để khởi tạo Mapbox.
-                        if (!MapboxConfig.TryGetAccessToken(out var token))
+                        // Mapbox GL cần public token (pk.*). Không có hoặc sai → tiles không tải (màn trắng).
+                        if (!MapboxConfig.TryGetAccessToken(out var token) ||
+                            !MapboxConfig.LooksLikeMapboxPublicToken(token))
                         {
                             var input = await DisplayPromptAsync(
-                                "Thiếu cấu hình Mapbox",
-                                "Android emulator thường không nhận biến môi trường từ Windows.\n\n" +
-                                "Dán Mapbox public token (bắt đầu bằng pk.) để lưu trên máy này.",
+                                "Cấu hình Mapbox",
+                                "Lấy token miễn phí: đăng nhập mapbox.com → Account → Access tokens → Create token (Public scopes mặc định).\n\n" +
+                                "Dán public token (bắt đầu bằng pk.) — Android emulator không đọc biến môi trường Windows.",
                                 accept: "Lưu",
                                 cancel: "Hủy",
                                 placeholder: "pk....",
-                                maxLength: 200,
+                                maxLength: 220,
                                 keyboard: Keyboard.Text);
 
                             if (string.IsNullOrWhiteSpace(input))
+                            {
+                                await DisplayAlertAsync(
+                                    "Bản đồ chưa hiển thị",
+                                    "Cần token Mapbox hợp lệ. Mở lại tab Bản đồ để nhập, hoặc tạo file Resources/Raw/mapbox_token.txt (một dòng pk...).",
+                                    "OK");
                                 return;
+                            }
 
                             MapboxConfig.SaveAccessToken(input);
-                            token = MapboxConfig.AccessToken;
+                            token = MapboxConfig.AccessToken.Trim();
+                            if (!MapboxConfig.LooksLikeMapboxPublicToken(token))
+                            {
+                                await DisplayAlertAsync("Token không hợp lệ", "Public token phải bắt đầu bằng pk. và đủ dài.", "OK");
+                                return;
+                            }
                         }
 
                         var tokenJson = JsonSerializer.Serialize(token);
                         await MapHybrid.EvaluateJavaScriptAsync($"startMap({tokenJson});");
+                        await Task.Delay(350);
+                        try
+                        {
+                            await MapHybrid.EvaluateJavaScriptAsync(
+                                "if(typeof window.__mapboxResizeMap==='function')window.__mapboxResizeMap();");
+                        }
+                        catch
+                        {
+                            /* ignore */
+                        }
+
+                        return;
+                    }
+
+                    if (type == "mapError")
+                    {
+                        var msg = root.TryGetProperty("message", out var m) ? m.GetString() : "Lỗi Mapbox không xác định.";
+                        await DisplayAlertAsync(
+                            "Bản đồ không tải được",
+                            $"{msg}\n\n" +
+                            "Kiểm tra Mapbox: Account → token của bạn — **bỏ giới hạn URL** (URL restrictions) cho bản dev, hoặc tạo token mới không hạn chế.\n" +
+                            "Emulator cần Internet. Sau đó đóng app và mở lại tab Bản đồ.",
+                            "OK");
                         return;
                     }
 
