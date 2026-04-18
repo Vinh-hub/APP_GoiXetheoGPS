@@ -5,9 +5,16 @@ namespace APP_GoiXetheoGPS.Pages;
 
 public partial class TripTrackingPage : ContentPage
 {
+    private readonly TripHistoryService _tripHistoryService;
+
     public TripTrackingPage()
     {
         InitializeComponent();
+
+        var settingsService = ServiceHelper.GetService<AppSettingsService>() ?? new AppSettingsService();
+        var rideApiService = ServiceHelper.GetService<RideApiService>() ?? new RideApiService(settingsService);
+        _tripHistoryService = ServiceHelper.GetService<TripHistoryService>()
+            ?? new TripHistoryService(settingsService, rideApiService);
     }
 
     protected override async void OnAppearing()
@@ -15,23 +22,26 @@ public partial class TripTrackingPage : ContentPage
         base.OnAppearing();
         try
         {
-            TripsCollection.ItemsSource = await TripDataStore.GetGroupedByMonthAsync();
+            var result = await _tripHistoryService.GetPreferredHistoryAsync();
+            TripsCollection.ItemsSource = result.Groups;
+            SourceHintLabel.Text = result.SourceMessage;
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Dữ liệu chuyến", $"Không đọc được Data/trips_for_app.json.\n{ex.Message}", "OK");
+            SourceHintLabel.Text = "Không tải được dữ liệu chuyến.";
+            await DisplayAlertAsync("Dữ liệu chuyến", ex.Message, "OK");
         }
     }
 
     async void TripsCollection_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (sender is not CollectionView cv)
+        if (sender is not CollectionView collectionView)
             return;
 
         if (e.CurrentSelection.FirstOrDefault() is not TripHistoryItem trip)
             return;
 
-        cv.SelectedItem = null;
+        collectionView.SelectedItem = null;
 
         try
         {

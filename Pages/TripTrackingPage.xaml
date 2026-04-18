@@ -6,15 +6,22 @@
              Title="Theo dõi chuyến"
              BackgroundColor="{AppThemeBinding Light=#F5F7FA, Dark={StaticResource DarkBackground}}">
 
-    <Grid RowDefinitions="Auto,*" Padding="0,8,0,0">
+    <Grid RowDefinitions="Auto,Auto,*" Padding="0,8,0,0">
         <Label Grid.Row="0"
-               Margin="20,4,20,12"
+               Margin="20,4,20,8"
                Style="{StaticResource Body2}"
                Text="Danh sách chuyến"
                TextColor="{AppThemeBinding Light=#5A6578, Dark=#AAB4C5}" />
 
+        <Label x:Name="SourceHintLabel"
+               Grid.Row="1"
+               Margin="20,0,20,12"
+               Style="{StaticResource Caption1}"
+               Text="Đang tải dữ liệu chuyến..."
+               TextColor="{AppThemeBinding Light=#6B7280, Dark=#9CA3AF}" />
+
         <CollectionView x:Name="TripsCollection"
-                        Grid.Row="1"
+                        Grid.Row="2"
                         IsGrouped="True"
                         SelectionChanged="TripsCollection_SelectionChanged"
                         SelectionMode="Single">
@@ -77,7 +84,6 @@
                                    Style="{StaticResource Caption1}"
                                    Text="{Binding Status}"
                                    TextColor="{StaticResource Primary}" />
-
                         </Grid>
 
                         <BoxView Margin="0,14,0,0"

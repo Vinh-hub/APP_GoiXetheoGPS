@@ -1,4 +1,5 @@
-﻿using CommunityToolkit.Maui;
+﻿using APP_GoiXetheoGPS.Services;
+using CommunityToolkit.Maui;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Hosting;
@@ -18,10 +19,10 @@ namespace APP_GoiXetheoGPS
                 .ConfigureMauiHandlers(handlers =>
                 {
 #if WINDOWS
-    				Microsoft.Maui.Controls.Handlers.Items.CollectionViewHandler.Mapper.AppendToMapping("KeyboardAccessibleCollectionView", (handler, view) =>
-    				{
-    					handler.PlatformView.SingleSelectionFollowsFocus = false;
-    				});
+                    Microsoft.Maui.Controls.Handlers.Items.CollectionViewHandler.Mapper.AppendToMapping("KeyboardAccessibleCollectionView", (handler, view) =>
+                    {
+                        handler.PlatformView.SingleSelectionFollowsFocus = false;
+                    });
 #endif
                 })
                 .ConfigureFonts(fonts =>
@@ -33,12 +34,15 @@ namespace APP_GoiXetheoGPS
                 });
 
 #if DEBUG
-    		builder.Logging.AddDebug();
-    		builder.Services.AddLogging(configure => configure.AddDebug());
-    		builder.Services.AddHybridWebViewDeveloperTools();
+            builder.Logging.AddDebug();
+            builder.Services.AddLogging(configure => configure.AddDebug());
+            builder.Services.AddHybridWebViewDeveloperTools();
 #endif
 
             builder.Services.AddSingleton<MainPage>();
+            builder.Services.AddSingleton<AppSettingsService>();
+            builder.Services.AddSingleton<RideApiService>();
+            builder.Services.AddSingleton<TripHistoryService>();
             builder.Services.AddSingleton<HomeMapPage>();
             builder.Services.AddSingleton<TripTrackingPage>();
             builder.Services.AddTransient<TripDetailPage>();
