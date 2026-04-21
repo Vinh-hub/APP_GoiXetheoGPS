@@ -1,0 +1,103 @@
+@model List<RideAPI.Models.ViewModels.AdminUserListItemViewModel>
+@{
+    ViewData["Title"] = "Quản lý người dùng";
+}
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <style>
+        body { font-family: Arial, Helvetica, sans-serif; background: #f4f6fb; color: #111827; }
+        .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+        .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+        table { width:100%; border-collapse: collapse; background:#fff; }
+        th, td { border:1px solid #e5e7eb; padding:10px; text-align:left; font-size:14px; }
+        th { background:#f3f4f6; }
+        .btn { border:0; border-radius:6px; padding:6px 10px; color:#fff; cursor:pointer; text-decoration:none; display:inline-block; font-size:13px; }
+        .btn-add { background:#2563eb; }
+        .btn-edit { background:#0ea5e9; }
+        .btn-del { background:#ef4444; }
+        .btn-lock { background:#f59e0b; }
+        .btn-back { background:#6b7280; }
+        .actions { display:flex; gap:6px; flex-wrap:wrap; }
+        form { margin:0; display:inline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top">
+            <h1 style="margin:0;">Quản lý người dùng</h1>
+            <div>
+                <a class="btn btn-back" href="/admin/dashboard">Dashboard</a>
+                <a class="btn btn-add" href="/admin/users/create">Thêm user</a>
+            </div>
+        </div>
+
+        <form method="get" action="/admin/users" style="background:#fff;padding:12px;border-radius:10px;margin-bottom:12px;display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;">
+            <input type="text" name="keyword" value="@ViewBag.Keyword" placeholder="Lọc theo email / tên / SĐT" style="padding:9px;border:1px solid #d1d5db;border-radius:8px;" />
+            <select name="role" style="padding:9px;border:1px solid #d1d5db;border-radius:8px;">
+                <option value="" selected="@(string.IsNullOrWhiteSpace((string?)ViewBag.Role))">Tất cả role</option>
+                <option value="Admin" selected="@((string?)ViewBag.Role == "Admin")">Admin</option>
+                <option value="Customer" selected="@((string?)ViewBag.Role == "Customer")">Customer</option>
+                <option value="Driver" selected="@((string?)ViewBag.Role == "Driver")">Driver</option>
+            </select>
+            <select name="status" style="padding:9px;border:1px solid #d1d5db;border-radius:8px;">
+                <option value="" selected="@(string.IsNullOrWhiteSpace((string?)ViewBag.Status))">Tất cả trạng thái</option>
+                <option value="active" selected="@((string?)ViewBag.Status == "active")">Đang hoạt động</option>
+                <option value="locked" selected="@((string?)ViewBag.Status == "locked")">Đã khóa</option>
+            </select>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-add" type="submit">Lọc</button>
+                <a class="btn btn-back" href="/admin/users">Reset</a>
+            </div>
+        </form>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>CustomerId</th>
+                    <th>DriverId</th>
+                    <th>Tên</th>
+                    <th>SĐT</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var u in Model)
+            {
+                <tr>
+                    <td>@u.UserId</td>
+                    <td>@u.Email</td>
+                    <td>@u.Role</td>
+                    <td>@(u.CustomerId?.ToString() ?? "-")</td>
+                    <td>@(u.DriverId?.ToString() ?? "-")</td>
+                    <td>@u.Name</td>
+                    <td>@u.Phone</td>
+                    <td>@(u.IsActive ? "Đang hoạt động" : "Đã khóa")</td>
+                    <td>
+                        <div class="actions">
+                            <a class="btn btn-edit" href="/admin/users/edit/@u.UserId">Sửa</a>
+                            <form asp-action="ToggleLock" asp-controller="AdminUsers" asp-route-id="@u.UserId" method="post">
+                                @Html.AntiForgeryToken()
+                                <button class="btn btn-lock" type="submit">@(u.IsActive ? "Khóa" : "Mở khóa")</button>
+                            </form>
+                            <form asp-action="Delete" asp-controller="AdminUsers" asp-route-id="@u.UserId" method="post" onsubmit="return confirm('Xóa user này?');">
+                                @Html.AntiForgeryToken()
+                                <button class="btn btn-del" type="submit">Xóa</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

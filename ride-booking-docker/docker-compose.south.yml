@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  south-master:
+    image: postgres:16
+    container_name: south-master
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: ride_sharing
+    command: postgres -c wal_level=replica -c max_wal_senders=10 -c wal_keep_size=64MB -c hot_standby=on -c listen_addresses='*'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d ride_sharing"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "5434:5432"
+    volumes:
+      - south_master_data:/var/lib/postgresql/data
+      - ./init-south.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./enable-replication.sh:/docker-entrypoint-initdb.d/enable-replication.sh
+    networks:
+      - south-net
+
+  south-slave:
+    image: postgres:16
+    container_name: south-slave
+    depends_on:
+      south-master:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    command: >
+      bash -c "
+      export PGPASSWORD=secret;
+      until pg_isready -h south-master -p 5432 -U admin; do sleep 2; done;
+      rm -rf /var/lib/postgresql/data/*;
+      until pg_basebackup -h south-master -U admin -D /var/lib/postgresql/data -P -R --wal-method=stream; do sleep 2; done;
+      echo 'hot_standby = on' >> /var/lib/postgresql/data/postgresql.conf;
+      chown -R postgres:postgres /var/lib/postgresql/data;
+      exec docker-entrypoint.sh postgres
+      "
+    ports:
+      - "5435:5432"
+    volumes:
+      - south_slave_data:/var/lib/postgresql/data
+    networks:
+      - south-net
+
+volumes:
+  south_master_data:
+  south_slave_data:
+
+networks:
+  south-net:

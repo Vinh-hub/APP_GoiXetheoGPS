@@ -26,6 +26,12 @@
         ContentTemplate="{DataTemplate pages:TripTrackingPage}"
         Route="trips" />
 
+    <ShellContent
+        Title="Tài khoản"
+        Icon="{StaticResource IconDashboard}"
+        ContentTemplate="{DataTemplate pages:AuthPage}"
+        Route="auth" />
+
     <Shell.FlyoutFooter>
         <Grid Padding="15">
             <sf:SfSegmentedControl x:Name="ThemeSegmentedControl" 

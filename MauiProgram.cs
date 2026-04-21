@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Maui;
+using APP_GoiXetheoGPS.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Hosting;
@@ -41,7 +42,17 @@ namespace APP_GoiXetheoGPS
             builder.Services.AddSingleton<MainPage>();
             builder.Services.AddSingleton<HomeMapPage>();
             builder.Services.AddSingleton<TripTrackingPage>();
+            builder.Services.AddSingleton<AuthPage>();
             builder.Services.AddTransient<TripDetailPage>();
+
+            builder.Services.AddSingleton<AuthSessionService>();
+            builder.Services.AddSingleton<UserLocationService>();
+            builder.Services.AddSingleton<ApiClient>();
+            builder.Services.AddSingleton<AuthApiService>();
+            builder.Services.AddSingleton<DriverApiService>();
+            builder.Services.AddSingleton<RideApiService>();
+            builder.Services.AddSingleton<PaymentApiService>();
+            builder.Services.AddSingleton<RatingApiService>();
 
             return builder.Build();
         }

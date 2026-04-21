@@ -100,6 +100,9 @@
 		<None Remove="RideAPI\**\*" />
 	</ItemGroup>
 	<ItemGroup>
+	  <MauiXaml Update="Pages\AuthPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
 	  <MauiXaml Update="Pages\MainPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>

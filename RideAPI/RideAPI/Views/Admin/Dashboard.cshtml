@@ -1,0 +1,61 @@
+@model RideAPI.Models.ViewModels.AdminDashboardViewModel
+@{
+    ViewData["Title"] = "Admin Dashboard";
+}
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <style>
+        body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: #f4f6fb; color: #1f2937; }
+        .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+        .header { background: #111827; color: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+        .card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+        .label { color: #6b7280; font-size: 13px; margin-bottom: 8px; }
+        .value { font-size: 18px; font-weight: 700; }
+        .links { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+        .links a { text-decoration: none; background: #2563eb; color: #fff; padding: 10px 14px; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="margin:0 0 8px 0;">Admin Dashboard</h1>
+            <div>Xin chào, @Model.Name</div>
+            <form asp-action="Logout" asp-controller="Admin" method="post" style="margin-top:10px;">
+                @Html.AntiForgeryToken()
+                <button type="submit" style="border:0;background:#ef4444;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;">Đăng xuất</button>
+            </form>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <div class="label">Email</div>
+                <div class="value">@Model.Email</div>
+            </div>
+            <div class="card">
+                <div class="label">Role</div>
+                <div class="value">@Model.Role</div>
+            </div>
+            <div class="card">
+                <div class="label">Region</div>
+                <div class="value">@(string.IsNullOrWhiteSpace(Model.RegionId) ? "N/A" : Model.RegionId)</div>
+            </div>
+            <div class="card">
+                <div class="label">Generated (UTC)</div>
+                <div class="value">@Model.GeneratedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</div>
+            </div>
+        </div>
+
+        <div class="links">
+            <a href="/admin/users">Quản lý người dùng</a>
+            <a href="/admin/trips">Trips</a>
+            <a href="/admin/nearby-drivers">Nearby Drivers</a>
+        </div>
+    </div>
+</body>
+</html>

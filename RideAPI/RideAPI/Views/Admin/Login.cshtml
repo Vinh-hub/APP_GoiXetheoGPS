@@ -1,0 +1,44 @@
+@model RideAPI.Models.ViewModels.AdminLoginViewModel
+@{
+    ViewData["Title"] = "Admin Login";
+}
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <style>
+        body { font-family: Arial, Helvetica, sans-serif; background: #f4f6fb; color: #1f2937; }
+        .box { width: 360px; margin: 80px auto; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+        h1 { font-size: 22px; margin: 0 0 16px 0; }
+        label { display:block; margin: 10px 0 6px; font-size: 14px; color:#4b5563; }
+        input { width: 100%; padding: 10px; border:1px solid #d1d5db; border-radius: 8px; box-sizing:border-box; }
+        button { width: 100%; margin-top: 16px; border: 0; background:#2563eb; color:#fff; padding:10px 12px; border-radius:8px; cursor:pointer; }
+        .error { color: #dc2626; font-size: 13px; margin-top: 4px; }
+        .validation-summary-errors ul { margin: 8px 0 0 18px; padding: 0; color: #dc2626; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>Admin Login</h1>
+        <form asp-action="Login" asp-controller="Admin" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" asp-for="ReturnUrl" />
+
+            <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+
+            <label asp-for="Email"></label>
+            <input asp-for="Email" autocomplete="username" />
+            <span asp-validation-for="Email" class="error"></span>
+
+            <label asp-for="Password"></label>
+            <input asp-for="Password" type="password" autocomplete="current-password" />
+            <span asp-validation-for="Password" class="error"></span>
+
+            <button type="submit">Đăng nhập</button>
+        </form>
+    </div>
+</body>
+</html>

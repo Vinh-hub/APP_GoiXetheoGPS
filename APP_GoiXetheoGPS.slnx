@@ -1,4 +1,12 @@
 <Solution>
+  <Folder Name="/ride-booking-docker/">
+    <File Path="docker-compose.north.yml" />
+    <File Path="docker-compose.south.yml" />
+    <File Path="init-north.sql" />
+    <File Path="init-south.sql" />
+    <File Path="README-docker.md" />
+  </Folder>
+  <Project Path="../RideAPI/RideAPI/RideAPI.csproj" />
   <Project Path="APP_GoiXetheoGPS.csproj">
     <Deploy Solution="Debug|*" />
   </Project>

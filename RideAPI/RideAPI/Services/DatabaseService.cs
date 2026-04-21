@@ -1,14 +1,10 @@
 ﻿using Microsoft.Extensions.Configuration;
-using MySqlConnector;
+using Npgsql;
+using System.Data.Common;
+using System.Globalization;
 
 namespace RideAPI.Services
 {
-    /// <summary>
-    /// Mô hình triển khai mặc định: một MySQL (XAMPP), hai schema NorthDB / SouthDB.
-    /// Master và Replica dùng chung host nếu không ghi ConnectionStrings đầy đủ — failover vẫn do code
-    /// (đọc: thử master rồi replica; ghi: chỉ master, lỗi nếu master không ping được).
-    /// Để demo failover đọc sang “replica” khác: đặt NorthReplica / SouthReplica thành chuỗi kết nối thật (máy khác hoặc user read-only).
-    /// </summary>
     public class DatabaseService
     {
         private readonly string _northMasterConn;
@@ -31,14 +27,30 @@ namespace RideAPI.Services
             static string? EffectiveConn(string? value) =>
                 string.IsNullOrWhiteSpace(value) ? null : value;
 
-            _northMasterConn = EffectiveConn(config.GetConnectionString("NorthMaster")) ?? BuildConn(northDb);
-            _southMasterConn = EffectiveConn(config.GetConnectionString("SouthMaster")) ?? BuildConn(southDb);
-            _northReplicaConn = EffectiveConn(config.GetConnectionString("NorthReplica")) ?? _northMasterConn;
-            _southReplicaConn = EffectiveConn(config.GetConnectionString("SouthReplica")) ?? _southMasterConn;
+            var northPrimary = EffectiveConn(config["DistributedDb:North:Primary"])
+                               ?? EffectiveConn(config.GetConnectionString("NorthMaster"))
+                               ?? BuildConn(northDb);
+
+            var northReplica = EffectiveConn(config["DistributedDb:North:Replica"])
+                               ?? EffectiveConn(config.GetConnectionString("NorthReplica"))
+                               ?? northPrimary;
+
+            var southPrimary = EffectiveConn(config["DistributedDb:South:Primary"])
+                               ?? EffectiveConn(config.GetConnectionString("SouthMaster"))
+                               ?? BuildConn(southDb);
+
+            var southReplica = EffectiveConn(config["DistributedDb:South:Replica"])
+                               ?? EffectiveConn(config.GetConnectionString("SouthReplica"))
+                               ?? southPrimary;
+
+            _northMasterConn = NormalizeMySqlConnectionString(northPrimary);
+            _northReplicaConn = NormalizeMySqlConnectionString(northReplica);
+            _southMasterConn = NormalizeMySqlConnectionString(southPrimary);
+            _southReplicaConn = NormalizeMySqlConnectionString(southReplica);
         }
 
         // Phương thức async dùng cho DbRetryService (hỗ trợ master/replica & failover)
-        public async Task<MySqlConnection> GetConnectionAsync(string region, bool isWrite)
+        public async Task<NpgsqlConnection> GetConnectionAsync(string region, bool isWrite)
         {
             string masterConn, replicaConn;
             if (region == "NORTH")
@@ -58,17 +70,17 @@ namespace RideAPI.Services
 
             if (isWrite)
             {
-                var conn = new MySqlConnection(masterConn);
+                var conn = new NpgsqlConnection(masterConn);
                 if (await IsConnectionAlive(conn))
                     return conn;
                 throw new Exception("MASTER_DOWN_CANNOT_WRITE");
             }
             else
             {
-                var master = new MySqlConnection(masterConn);
+                var master = new NpgsqlConnection(masterConn);
                 if (await IsConnectionAlive(master))
                     return master;
-                var replica = new MySqlConnection(replicaConn);
+                var replica = new NpgsqlConnection(replicaConn);
                 if (await IsConnectionAlive(replica))
                     return replica;
                 throw new Exception("ALL_DB_NODES_DOWN");
@@ -76,14 +88,14 @@ namespace RideAPI.Services
         }
 
         // Phương thức cũ giữ lại cho tương thích (đồng bộ, trả connection chưa mở)
-        public MySqlConnection GetConnection(double latitude)
+        public NpgsqlConnection GetConnection(double latitude)
         {
             return latitude > 16
-                ? new MySqlConnection(_northMasterConn)
-                : new MySqlConnection(_southMasterConn);
+                ? new NpgsqlConnection(_northMasterConn)
+                : new NpgsqlConnection(_southMasterConn);
         }
 
-        private async Task<bool> IsConnectionAlive(MySqlConnection conn)
+        private async Task<bool> IsConnectionAlive(NpgsqlConnection conn)
         {
             try
             {
@@ -97,6 +109,57 @@ namespace RideAPI.Services
             catch
             {
                 return false;
+            }
+        }
+
+        private static string NormalizeMySqlConnectionString(string connectionString)
+        {
+            try
+            {
+                var raw = new DbConnectionStringBuilder { ConnectionString = connectionString };
+
+                static string? GetValue(DbConnectionStringBuilder builder, params string[] keys)
+                {
+                    foreach (var key in keys)
+                    {
+                        if (builder.TryGetValue(key, out var value) && value is not null)
+                            return Convert.ToString(value, CultureInfo.InvariantCulture);
+                    }
+
+                    return null;
+                }
+
+                var server = GetValue(raw, "Server", "Host", "Data Source") ?? "127.0.0.1";
+                var database = GetValue(raw, "Database", "Initial Catalog") ?? string.Empty;
+                var user = GetValue(raw, "User ID", "Uid", "User", "Username") ?? string.Empty;
+                var password = GetValue(raw, "Password", "Pwd") ?? string.Empty;
+                var portText = GetValue(raw, "Port");
+
+                int port = 3306;
+                if (!string.IsNullOrWhiteSpace(portText) && int.TryParse(portText, out var parsedPort))
+                    port = parsedPort;
+
+                var postgres = new NpgsqlConnectionStringBuilder
+                {
+                    Host = server,
+                    Port = port,
+                    Database = database,
+                    Username = user,
+                    Password = password
+                };
+
+                if (raw.TryGetValue("SSL Mode", out var sslMode) && sslMode is not null)
+                {
+                    var sslText = Convert.ToString(sslMode, CultureInfo.InvariantCulture);
+                    if (string.Equals(sslText, "Disable", StringComparison.OrdinalIgnoreCase))
+                        postgres.SslMode = SslMode.Disable;
+                }
+
+                return postgres.ConnectionString;
+            }
+            catch
+            {
+                return connectionString;
             }
         }
     }

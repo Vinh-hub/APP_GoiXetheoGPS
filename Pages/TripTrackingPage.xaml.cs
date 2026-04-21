@@ -15,11 +15,11 @@ public partial class TripTrackingPage : ContentPage
         base.OnAppearing();
         try
         {
-            TripsCollection.ItemsSource = await TripDataStore.GetGroupedByMonthAsync();
+            TripsCollection.ItemsSource = await TripDataStore.GetGroupedByMonthAsync(forceRefresh: true);
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Dữ liệu chuyến", $"Không đọc được Data/trips_for_app.json.\n{ex.Message}", "OK");
+            await DisplayAlertAsync("Dữ liệu chuyến", ApiErrorHandler.ToUserMessage(ex), "OK");
         }
     }
 
@@ -39,7 +39,7 @@ public partial class TripTrackingPage : ContentPage
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Không mở được chi tiết", ex.Message, "OK");
+            await DisplayAlertAsync("Không mở được chi tiết", ApiErrorHandler.ToUserMessage(ex), "OK");
         }
     }
 }

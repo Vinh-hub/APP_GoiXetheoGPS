@@ -1,4 +1,4 @@
-﻿using MySqlConnector;
+﻿using Npgsql;
 using RideAPI.Models;
 
 namespace RideAPI.Services
@@ -20,7 +20,7 @@ namespace RideAPI.Services
             var sql = @"INSERT INTO Trips (UserID, DriverID, Status, Price, CreatedAt)
                         VALUES (@userId, NULL, @status, @price, NOW())";
 
-            using var cmd = new MySqlCommand(sql, conn);
+            using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@userId", request.UserID);
             cmd.Parameters.AddWithValue("@status", "Requested");
             cmd.Parameters.AddWithValue("@price", request.Price);
@@ -37,7 +37,7 @@ namespace RideAPI.Services
                         FROM Trips
                         WHERE TripID = @tripId";
 
-            using var cmd = new MySqlCommand(sql, conn);
+            using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@tripId", id);
 
             using var reader = cmd.ExecuteReader();
@@ -46,13 +46,13 @@ namespace RideAPI.Services
             {
                 return new Trip
                 {
-                    TripID = reader.GetInt32("TripID"),
-                    UserID = reader.GetInt32("UserID"),
-                    DriverID = reader.IsDBNull(reader.GetOrdinal("DriverID")) ? 0 : reader.GetInt32("DriverID"),
-                    Status = reader.GetString("Status"),
-                    Price = reader.GetDecimal("Price"),
+                    TripID = Convert.ToInt32(reader["TripID"]),
+                    UserID = Convert.ToInt32(reader["UserID"]),
+                    DriverID = reader["DriverID"] is DBNull ? 0 : Convert.ToInt32(reader["DriverID"]),
+                    Status = Convert.ToString(reader["Status"]) ?? string.Empty,
+                    Price = Convert.ToDecimal(reader["Price"]),
                     StartLat = latitude,
-                    CreatedAt = reader.GetDateTime("CreatedAt")
+                    CreatedAt = Convert.ToDateTime(reader["CreatedAt"])
                 };
             }
 
@@ -68,7 +68,7 @@ namespace RideAPI.Services
                         SET DriverID = @driverId, Status = 'Accepted'
                         WHERE TripID = @tripId";
 
-            using var cmd = new MySqlCommand(sql, conn);
+            using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@driverId", request.DriverID);
             cmd.Parameters.AddWithValue("@tripId", request.TripID);
 
@@ -84,7 +84,7 @@ namespace RideAPI.Services
                         SET Status = 'Completed', Price = @finalPrice
                         WHERE TripID = @tripId";
 
-            using var cmd = new MySqlCommand(sql, conn);
+            using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@finalPrice", request.FinalPrice);
             cmd.Parameters.AddWithValue("@tripId", request.TripID);
 

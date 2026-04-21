@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using APP_GoiXetheoGPS.Configuration;
 using APP_GoiXetheoGPS.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace APP_GoiXetheoGPS.Pages
 {
@@ -13,6 +14,8 @@ namespace APP_GoiXetheoGPS.Pages
 
         // HttpClient dùng chung cho tính năng gợi ý địa điểm (Mapbox Geocoding).
         private static readonly HttpClient Http = new();
+        private readonly RideApiService _rideApiService;
+        private readonly DriverApiService _driverApiService;
 
         // Trạng thái chọn loại điểm hiện tại (đón / đến) khi người dùng chạm bản đồ.
         private bool _placingPickup = true;
@@ -40,6 +43,15 @@ namespace APP_GoiXetheoGPS.Pages
         {
             InitializeComponent();
             SuggestionsList.ItemsSource = new List<MapboxSuggestion>();
+
+            var services = Application.Current?.Handler?.MauiContext?.Services;
+            var session = services?.GetService<AuthSessionService>() ?? new AuthSessionService();
+            var location = services?.GetService<UserLocationService>() ?? new UserLocationService();
+            var fallbackApiClient = services?.GetService<ApiClient>() ?? new ApiClient(session, location);
+            _rideApiService = services?.GetService<RideApiService>()
+                ?? new RideApiService(fallbackApiClient);
+            _driverApiService = services?.GetService<DriverApiService>()
+                ?? new DriverApiService(fallbackApiClient);
         }
 
         private void BtnPickup_OnClicked(object? sender, EventArgs e)
@@ -616,5 +628,78 @@ namespace APP_GoiXetheoGPS.Pages
                     "OK");
             }
         }
+
+        private async void BookRideButton_OnClicked(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (_pickupLat is not double pickupLat || _pickupLng is not double pickupLng
+                    || _dropLat is not double dropLat || _dropLng is not double dropLng)
+                {
+                    await DisplayAlertAsync("Đặt chuyến", "Bạn cần chọn đủ điểm đón và điểm đến trước khi đặt xe.", "OK");
+                    return;
+                }
+
+                BookRideButton.IsEnabled = false;
+                BookRideButton.Text = "Đang đặt...";
+
+                var nearbyDrivers = await _driverApiService.GetNearbyDriversAsync(pickupLat, pickupLng, radiusKm: 10, limit: 1);
+                var selectedDriver = nearbyDrivers.FirstOrDefault();
+                if (selectedDriver is null)
+                {
+                    await DisplayAlertAsync("Đặt chuyến", "Không tìm thấy tài xế gần bạn. Vui lòng thử lại sau.", "OK");
+                    return;
+                }
+
+                var request = new RideApiService.BookRideRequest
+                {
+                    DriverId = selectedDriver.DriverId,
+                    StartLat = pickupLat,
+                    StartLng = pickupLng,
+                    EndLat = dropLat,
+                    EndLng = dropLng,
+                    Price = EstimatePriceVnd(pickupLat, pickupLng, dropLat, dropLng)
+                };
+
+                var result = await _rideApiService.BookRideAsync(request);
+                await DisplayAlertAsync(
+                    "Đặt chuyến thành công",
+                    $"Mã chuyến: {result?.TripId}\n{result?.Message ?? "Yêu cầu đã được gửi."}",
+                    "OK");
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlertAsync("Đặt chuyến", ApiErrorHandler.ToUserMessage(ex), "OK");
+            }
+            finally
+            {
+                BookRideButton.IsEnabled = true;
+                BookRideButton.Text = "Đặt xe";
+            }
+        }
+
+        private static decimal EstimatePriceVnd(double lat1, double lon1, double lat2, double lon2)
+        {
+            var distanceKm = HaversineKm(lat1, lon1, lat2, lon2);
+            var estimated = Math.Max(20000m, (decimal)distanceKm * 10000m);
+            return Math.Round(estimated, 0);
+        }
+
+        private static double HaversineKm(double lat1, double lon1, double lat2, double lon2)
+        {
+            const double earthRadiusKm = 6371d;
+
+            double dLat = DegreesToRadians(lat2 - lat1);
+            double dLon = DegreesToRadians(lon2 - lon1);
+            double a =
+                Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(DegreesToRadians(lat1)) * Math.Cos(DegreesToRadians(lat2)) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+
+            double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+            return earthRadiusKm * c;
+        }
+
+        private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180d;
     }
 }

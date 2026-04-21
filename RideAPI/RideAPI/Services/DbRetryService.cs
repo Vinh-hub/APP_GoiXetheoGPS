@@ -1,5 +1,5 @@
 ﻿using Polly;
-using MySqlConnector;
+using Npgsql;
 
 namespace RideAPI.Services
 {
@@ -14,10 +14,10 @@ namespace RideAPI.Services
             _logger = logger;
         }
 
-        public async Task<T> ExecuteWithRetry<T>(Func<MySqlConnection, Task<T>> action, string region, bool isWrite)
+        public async Task<T> ExecuteWithRetry<T>(Func<NpgsqlConnection, Task<T>> action, string region, bool isWrite)
         {
             var retryPolicy = Policy<T>
-                .Handle<MySqlException>(ex => ex.IsTransient)
+                .Handle<NpgsqlException>(ex => ex.IsTransient)
                 .Or<TimeoutException>()
                 .WaitAndRetryAsync(
                     3,

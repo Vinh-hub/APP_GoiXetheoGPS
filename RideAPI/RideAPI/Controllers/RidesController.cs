@@ -45,8 +45,8 @@ namespace RideAPI.Controllers
                 {
                     var sql = @"
                         INSERT INTO Trips (UserID, DriverID, Status, Price, StartLat, StartLng, EndLat, EndLng, CreatedAt)
-                        VALUES (@UserId, @DriverId, 'Requested', @Price, @StartLat, @StartLng, @EndLat, @EndLng, NOW());
-                        SELECT LAST_INSERT_ID();";
+                        VALUES (@UserId, @DriverId, 'Requested', @Price, @StartLat, @StartLng, @EndLat, @EndLng, NOW())
+                        RETURNING TripID;";
                     return await conn.ExecuteScalarAsync<int>(sql, new
                     {
                         UserId = userId,

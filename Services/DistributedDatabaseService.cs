@@ -1,33 +1,27 @@
-using MySql.Data.MySqlClient;
+using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using System.Text.Json;
-using Microsoft.Maui.Devices;
 using Microsoft.Maui.Storage;
 
 namespace APP_GoiXetheoGPS.Services;
 
 /// <summary>
-/// Service kết nối THẬT tới 2 database MySQL phân tán
+/// Service lấy thống kê DB phân tán qua Web API.
 /// </summary>
 public static class DistributedDatabaseService
 {
-    /// ================================
-    /// CONFIG DATABASE CONNECTION
-    /// ================================
-    /// <summary>
-    /// Android Emulator: 127.0.0.1 là chính emulator — MySQL trên PC phải dùng 10.0.2.2 (alias tới host).
-    /// Điện thoại thật: đổi thành IP LAN của PC (ví dụ 192.168.1.5) trong my.ini / connection string tương ứng.
-    /// </summary>
-    private static string DbHost =>
-        DeviceInfo.Current.Platform == DevicePlatform.Android
-            ? "10.0.2.2"
-            : "127.0.0.1";
+    private static readonly HttpClient Http = new()
+    {
+        Timeout = TimeSpan.FromSeconds(20)
+    };
 
-    // Trùng tên schema trong Data/APPGPS.sql và RideAPI appsettings.json (DistributedDb).
-    private static string Db1Connection =>
-        $"Server={DbHost};Port=3306;Database=NorthDB;Uid=root;Pwd=;";
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
-    private static string Db2Connection =>
-        $"Server={DbHost};Port=3306;Database=SouthDB;Uid=root;Pwd=;";
+    private static readonly AuthSessionService Session = new();
+    private static readonly UserLocationService Location = new();
 
     public sealed record DatabaseStats(
         string DatabaseName,
@@ -40,84 +34,178 @@ public static class DistributedDatabaseService
     public static async Task<List<DatabaseStats>> GetDatabaseStatsAsync(
         CancellationToken cancellationToken = default)
     {
-        var stats = new List<DatabaseStats>();
-
-        var db1Count = await GetRealRecordCountAsync(
-            Db1Connection,
-            "Users",
-            cancellationToken);
-
-        stats.Add(new DatabaseStats(
-            "DB1 (Primary)",
-            db1Count,
-            DateTime.Now));
-
-        var db2Count = await GetRealRecordCountAsync(
-            Db2Connection,
-            "Users",
-            cancellationToken);
-
-        stats.Add(new DatabaseStats(
-            "DB2 (Replica)",
-            db2Count,
-            DateTime.Now));
-
-        return stats;
+        return await GetStatsFromAnyEndpointAsync(
+            cancellationToken,
+            "/api/distributed-db/stats",
+            "/api/database/stats",
+            "/api/distributeddb/stats");
     }
 
     /// ================================
     /// DB1 RIÊNG
     /// ================================
-    public static async Task<DatabaseStats> GetPrimaryDatabaseStatsAsync()
+    public static async Task<DatabaseStats> GetPrimaryDatabaseStatsAsync(CancellationToken cancellationToken = default)
     {
-        var count = await GetRealRecordCountAsync(Db1Connection, "Users");
-
-        return new DatabaseStats(
-            "DB1 (Primary)",
-            count,
-            DateTime.Now);
+        return await GetSingleFromAnyEndpointAsync(
+            cancellationToken,
+            fallbackName: "DB1 (Primary)",
+            "/api/distributed-db/stats/primary",
+            "/api/database/stats/primary",
+            "/api/distributeddb/stats/primary");
     }
 
     /// ================================
     /// DB2 RIÊNG
     /// ================================
-    public static async Task<DatabaseStats> GetSecondaryDatabaseStatsAsync()
+    public static async Task<DatabaseStats> GetSecondaryDatabaseStatsAsync(CancellationToken cancellationToken = default)
     {
-        var count = await GetRealRecordCountAsync(Db2Connection, "Users");
-
-        return new DatabaseStats(
-            "DB2 (Replica)",
-            count,
-            DateTime.Now);
+        return await GetSingleFromAnyEndpointAsync(
+            cancellationToken,
+            fallbackName: "DB2 (Replica)",
+            "/api/distributed-db/stats/secondary",
+            "/api/distributed-db/stats/replica",
+            "/api/database/stats/secondary");
     }
 
     /// ================================
-    /// QUERY COUNT THẬT
+    /// WEB API HELPERS
     /// ================================
-    private static async Task<int> GetRealRecordCountAsync(
-        string connectionString,
-        string tableName,
-        CancellationToken cancellationToken = default)
+    private static async Task<List<DatabaseStats>> GetStatsFromAnyEndpointAsync(
+        CancellationToken cancellationToken,
+        params string[] routes)
     {
+        Exception? lastError = null;
+
+        foreach (var route in routes)
+        {
+            try
+            {
+                var url = WebApiServerConfig.BuildUrl(route);
+                using var request = await CreateGetRequestAsync(url, cancellationToken);
+                using var response = await Http.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                    continue;
+
+                var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+                var stats = ReadStatsList(payload);
+                if (stats.Count > 0)
+                    return stats;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+        }
+
+        if (lastError is not null)
+        {
+            System.Diagnostics.Debug.WriteLine($"Database API error: {lastError.Message}");
+        }
+
+        return new List<DatabaseStats>
+        {
+            new("DB1 (Primary)", 0, DateTime.Now),
+            new("DB2 (Replica)", 0, DateTime.Now)
+        };
+    }
+
+    private static async Task<DatabaseStats> GetSingleFromAnyEndpointAsync(
+        CancellationToken cancellationToken,
+        string fallbackName,
+        params string[] routes)
+    {
+        Exception? lastError = null;
+
+        foreach (var route in routes)
+        {
+            try
+            {
+                var url = WebApiServerConfig.BuildUrl(route);
+                using var request = await CreateGetRequestAsync(url, cancellationToken);
+                using var response = await Http.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                    continue;
+
+                var dto = await response.Content.ReadFromJsonAsync<DatabaseStats>(JsonOptions, cancellationToken);
+                if (dto is not null)
+                    return Normalize(dto, fallbackName);
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+        }
+
+        if (lastError is not null)
+        {
+            System.Diagnostics.Debug.WriteLine($"Database API error: {lastError.Message}");
+        }
+
+        return new DatabaseStats(fallbackName, 0, DateTime.Now);
+    }
+
+    private static List<DatabaseStats> ReadStatsList(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+            return new List<DatabaseStats>();
+
         try
         {
-            using var conn = new MySqlConnection(connectionString);
-            await conn.OpenAsync(cancellationToken);
-
-            string query = $"SELECT COUNT(*) FROM {tableName}";
-            using var cmd = new MySqlCommand(query, conn);
-
-            var result = await cmd.ExecuteScalarAsync(cancellationToken);
-
-            return Convert.ToInt32(result);
+            var direct = JsonSerializer.Deserialize<List<DatabaseStats>>(payload, JsonOptions);
+            if (direct is { Count: > 0 })
+                return direct.Select(Normalize).ToList();
         }
-        catch (Exception ex)
+        catch
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"Database error: {ex.Message}");
-
-            return 0;
+            // try wrapper format below
         }
+
+        using var doc = JsonDocument.Parse(payload);
+        if (doc.RootElement.TryGetProperty("stats", out var wrapped)
+            && wrapped.ValueKind == JsonValueKind.Array)
+        {
+            var list = wrapped.Deserialize<List<DatabaseStats>>(JsonOptions);
+            if (list is { Count: > 0 })
+                return list.Select(Normalize).ToList();
+        }
+
+        return new List<DatabaseStats>();
+    }
+
+    private static DatabaseStats Normalize(DatabaseStats stat)
+    {
+        var name = string.IsNullOrWhiteSpace(stat.DatabaseName)
+            ? "DB"
+            : stat.DatabaseName.Trim();
+
+        return stat with
+        {
+            DatabaseName = name,
+            LastUpdated = stat.LastUpdated == default ? DateTime.Now : stat.LastUpdated
+        };
+    }
+
+    private static DatabaseStats Normalize(DatabaseStats stat, string fallbackName)
+    {
+        var normalized = Normalize(stat);
+        return string.IsNullOrWhiteSpace(stat.DatabaseName)
+            ? normalized with { DatabaseName = fallbackName }
+            : normalized;
+    }
+
+    private static async Task<HttpRequestMessage> CreateGetRequestAsync(string url, CancellationToken cancellationToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+        var token = Session.AccessToken;
+        if (!string.IsNullOrWhiteSpace(token))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var latitude = await Location.GetCurrentLatitudeAsync(cancellationToken);
+        if (latitude.HasValue)
+            request.Headers.TryAddWithoutValidation("X-User-Latitude", latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        return request;
     }
 
     /// ================================

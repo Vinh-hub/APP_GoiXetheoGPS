@@ -180,9 +180,11 @@
                     </VerticalStackLayout>
                 </Border>
 
-                <Button Text="Đặt xe"
+                <Button x:Name="BookRideButton"
+                        Text="Đặt xe"
                         CornerRadius="16"
-                        Padding="16,14" />
+                        Padding="16,14"
+                        Clicked="BookRideButton_OnClicked" />
             </VerticalStackLayout>
         </Border>
     </Grid>

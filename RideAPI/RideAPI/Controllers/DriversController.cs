@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using MySqlConnector;
+using Npgsql;
 using RideAPI.Models;
 using RideAPI.Services;
 
@@ -44,7 +44,7 @@ namespace RideAPI.Controllers
                 using var conn = _db.GetConnection(lat);
                 await conn.OpenAsync();
 
-                await using (var verify = new MySqlCommand(
+                await using (var verify = new NpgsqlCommand(
                                  "SELECT COUNT(*) FROM Drivers WHERE DriverID = @id", conn))
                 {
                     verify.Parameters.AddWithValue("@id", driverId.Value);
@@ -56,7 +56,7 @@ namespace RideAPI.Controllers
                 const string sql = @"INSERT INTO DriverLocations (DriverID, Latitude, Longitude, UpdatedAt)
                                      VALUES (@driverId, @lat, @lng, CURRENT_TIMESTAMP)";
 
-                await using var cmd = new MySqlCommand(sql, conn);
+                await using var cmd = new NpgsqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@driverId", driverId.Value);
                 cmd.Parameters.AddWithValue("@lat", request.Latitude);
                 cmd.Parameters.AddWithValue("@lng", request.Longitude);
@@ -70,7 +70,7 @@ namespace RideAPI.Controllers
                     longitude = request.Longitude
                 });
             }
-            catch (MySqlException ex)
+            catch (NpgsqlException ex)
             {
                 return StatusCode(503, new
                 {
@@ -125,7 +125,7 @@ FROM (
            )))) AS DistanceKm
     FROM DriverLocations dl
     INNER JOIN Drivers d ON d.DriverID = dl.DriverID
-    WHERE d.IsActive = 1
+    WHERE LOWER(d.IsActive::text) IN ('1', 't', 'true')
       AND dl.LocationID = (
           SELECT MAX(dl2.LocationID)
           FROM DriverLocations dl2
@@ -136,7 +136,7 @@ WHERE t.DistanceKm <= @radiusKm
 ORDER BY t.DistanceKm ASC
 LIMIT @limit";
 
-                await using var cmd = new MySqlCommand(sql, conn);
+                await using var cmd = new NpgsqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@refLat", latitude);
                 cmd.Parameters.AddWithValue("@refLng", longitude);
                 cmd.Parameters.AddWithValue("@radiusKm", radiusKm);
@@ -160,7 +160,7 @@ LIMIT @limit";
 
                 return Ok(list);
             }
-            catch (MySqlException ex)
+            catch (NpgsqlException ex)
             {
                 return StatusCode(503, new
                 {

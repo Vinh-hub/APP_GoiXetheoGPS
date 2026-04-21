@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
-using MySqlConnector;
+using Npgsql;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -43,7 +43,8 @@ namespace RideAPI.Controllers
                 using var conn = _db.GetConnection(lat);
                 await conn.OpenAsync();
 
-                var sql = @"SELECT u.UserID, u.Email, u.Role, u.CustomerID, u.DriverID, u.IsActive,
+                var sql = @"SELECT u.UserID, u.Email, u.Role, u.CustomerID, u.DriverID,
+                                   CASE WHEN LOWER(u.IsActive::text) IN ('1', 't', 'true') THEN TRUE ELSE FALSE END AS IsActive,
                                    COALESCE(c.FullName, d.Name, u.Name) AS DisplayName,
                                    COALESCE(c.Phone, d.Phone, u.Phone) AS DisplayPhone
                             FROM Users u
@@ -52,7 +53,7 @@ namespace RideAPI.Controllers
                             WHERE u.Email = @email AND u.Password = @pwd
                             LIMIT 1";
 
-                using var cmd = new MySqlCommand(sql, conn);
+                using var cmd = new NpgsqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@email", email);
                 cmd.Parameters.AddWithValue("@pwd", password);
                 using var reader = await cmd.ExecuteReaderAsync();
@@ -60,17 +61,17 @@ namespace RideAPI.Controllers
                 if (!await reader.ReadAsync())
                     return Unauthorized(new { message = "Sai email hoặc mật khẩu." });
 
-                bool isActive = reader.GetBoolean("IsActive");
+                bool isActive = reader.GetBoolean(reader.GetOrdinal("IsActive"));
                 if (!isActive)
                     return Unauthorized(new { message = "Tài khoản đã bị khóa." });
 
-                var userId = reader.GetInt32("UserID");
-                var accountEmail = reader.GetString("Email");
-                var role = reader.GetString("Role");
-                var displayName = reader.IsDBNull(reader.GetOrdinal("DisplayName")) ? "" : reader.GetString("DisplayName");
-                var displayPhone = reader.IsDBNull(reader.GetOrdinal("DisplayPhone")) ? "" : reader.GetString("DisplayPhone");
-                int? customerId = reader.IsDBNull(reader.GetOrdinal("CustomerID")) ? null : reader.GetInt32("CustomerID");
-                int? driverId = reader.IsDBNull(reader.GetOrdinal("DriverID")) ? null : reader.GetInt32("DriverID");
+                var userId = reader.GetInt32(reader.GetOrdinal("UserID"));
+                var accountEmail = reader.GetString(reader.GetOrdinal("Email"));
+                var role = reader.GetString(reader.GetOrdinal("Role"));
+                var displayName = reader.IsDBNull(reader.GetOrdinal("DisplayName")) ? "" : reader.GetString(reader.GetOrdinal("DisplayName"));
+                var displayPhone = reader.IsDBNull(reader.GetOrdinal("DisplayPhone")) ? "" : reader.GetString(reader.GetOrdinal("DisplayPhone"));
+                int? customerId = reader.IsDBNull(reader.GetOrdinal("CustomerID")) ? null : reader.GetInt32(reader.GetOrdinal("CustomerID"));
+                int? driverId = reader.IsDBNull(reader.GetOrdinal("DriverID")) ? null : reader.GetInt32(reader.GetOrdinal("DriverID"));
                 int regionId = lat > 16 ? 1 : 2;
 
                 var token = GenerateJwtToken(userId, displayName, accountEmail, regionId, role, customerId, driverId);
@@ -89,7 +90,7 @@ namespace RideAPI.Controllers
                     regionId
                 });
             }
-            catch (MySqlException ex)
+            catch (NpgsqlException ex)
             {
                 return StatusCode(503, new { message = "Khu vực đang bảo trì.", detail = _env.IsDevelopment() ? ex.Message : null });
             }
@@ -119,7 +120,7 @@ namespace RideAPI.Controllers
 
                 // Kiểm tra email tồn tại
                 var checkSql = "SELECT COUNT(*) FROM Users WHERE Email = @email";
-                using var checkCmd = new MySqlCommand(checkSql, conn);
+                using var checkCmd = new NpgsqlCommand(checkSql, conn);
                 checkCmd.Parameters.AddWithValue("@email", email);
                 var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
                 if (count > 0)
@@ -128,26 +129,25 @@ namespace RideAPI.Controllers
                 using var tx = await conn.BeginTransactionAsync();
 
                 // Thêm Customer
-                var insertCustomerSql = @"INSERT INTO Customers (FullName, Phone, Email) VALUES (@name, @phone, @email)";
-                using var customerCmd = new MySqlCommand(insertCustomerSql, conn, tx);
+                var insertCustomerSql = @"INSERT INTO Customers (FullName, Phone, Email) VALUES (@name, @phone, @email) RETURNING CustomerID";
+                using var customerCmd = new NpgsqlCommand(insertCustomerSql, conn, tx);
                 customerCmd.Parameters.AddWithValue("@name", name);
                 customerCmd.Parameters.AddWithValue("@phone", phone);
                 customerCmd.Parameters.AddWithValue("@email", email);
-                await customerCmd.ExecuteNonQueryAsync();
-                var newCustomerId = (int)customerCmd.LastInsertedId;
+                var newCustomerId = Convert.ToInt32(await customerCmd.ExecuteScalarAsync());
 
                 // Thêm User
                 var insertUserSql = @"INSERT INTO Users (Email, Password, Role, CustomerID, Name, Phone, RegionID, IsActive)
-                                      VALUES (@email, @pwd, 'Customer', @cid, @name, @phone, @region, 1)";
-                using var userCmd = new MySqlCommand(insertUserSql, conn, tx);
+                                      VALUES (@email, @pwd, 'Customer', @cid, @name, @phone, @region, TRUE)
+                                      RETURNING UserID";
+                using var userCmd = new NpgsqlCommand(insertUserSql, conn, tx);
                 userCmd.Parameters.AddWithValue("@email", email);
                 userCmd.Parameters.AddWithValue("@pwd", password);
                 userCmd.Parameters.AddWithValue("@cid", newCustomerId);
                 userCmd.Parameters.AddWithValue("@name", name);
                 userCmd.Parameters.AddWithValue("@phone", phone);
                 userCmd.Parameters.AddWithValue("@region", regionId);
-                await userCmd.ExecuteNonQueryAsync();
-                var newUserId = (int)userCmd.LastInsertedId;
+                var newUserId = Convert.ToInt32(await userCmd.ExecuteScalarAsync());
 
                 await tx.CommitAsync();
 
@@ -167,9 +167,9 @@ namespace RideAPI.Controllers
                     regionId
                 });
             }
-            catch (MySqlException ex)
+            catch (NpgsqlException ex)
             {
-                if (ex.Number == 1062)
+                if (string.Equals(ex.SqlState, PostgresErrorCodes.UniqueViolation, StringComparison.Ordinal))
                     return Conflict(new { message = "Email đã được đăng ký." });
                 return StatusCode(503, new { message = "Đăng ký thất bại.", detail = _env.IsDevelopment() ? ex.Message : null });
             }
