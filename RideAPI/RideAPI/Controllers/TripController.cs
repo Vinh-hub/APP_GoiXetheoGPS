@@ -1,5 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using RideAPI.Models;
 using RideAPI.Services;
 
@@ -18,17 +18,16 @@ namespace RideAPI.Controllers
         }
 
         [HttpPost("request")]
-        public IActionResult RequestTrip([FromBody] TripRequestDto request)
+        public async Task<IActionResult> RequestTrip([FromBody] TripRequestDto request)
         {
-            _tripService.RequestTrip(request);
-            return Ok("Trip created");
+            var tripId = await _tripService.RequestTripAsync(request);
+            return Ok(new { tripId, message = "Trip created" });
         }
 
         [HttpGet("{id}")]
-        public IActionResult GetTrip(int id, [FromQuery] double latitude)
+        public async Task<IActionResult> GetTrip(int id, [FromQuery] double latitude)
         {
-            var trip = _tripService.GetTrip(id, latitude);
-
+            var trip = await _tripService.GetTripAsync(id, latitude);
             if (trip == null)
                 return NotFound("Trip not found");
 
@@ -36,16 +35,16 @@ namespace RideAPI.Controllers
         }
 
         [HttpPost("accept")]
-        public IActionResult AcceptTrip([FromBody] AcceptTripDto request)
+        public async Task<IActionResult> AcceptTrip([FromBody] AcceptTripDto request)
         {
-            _tripService.AcceptTrip(request);
+            await _tripService.AcceptTripAsync(request);
             return Ok("Trip accepted");
         }
 
         [HttpPost("complete")]
-        public IActionResult CompleteTrip([FromBody] CompleteTripDto request)
+        public async Task<IActionResult> CompleteTrip([FromBody] CompleteTripDto request)
         {
-            _tripService.CompleteTrip(request);
+            await _tripService.CompleteTripAsync(request);
             return Ok("Trip completed");
         }
     }

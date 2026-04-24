@@ -1,9 +1,9 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+﻿using System.Security.Claims;
 using Dapper;
-using RideAPI.Services;
-using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using RideAPI.Models;
+using RideAPI.Services;
 
 namespace RideAPI.Controllers
 {
@@ -19,34 +19,24 @@ namespace RideAPI.Controllers
             _dbRetry = dbRetry;
         }
 
-        // POST: api/rides
         [HttpPost]
-        public async Task<IActionResult> BookRide(
-    [FromHeader(Name = "X-User-Latitude")] double? userLatitude,
-    [FromBody] BookRideRequest request)
+        public async Task<IActionResult> BookRide([FromBody] BookRideRequest request)
         {
-            // Xác định region từ header (ưu tiên hơn middleware)
-            string region = userLatitude.HasValue && userLatitude.Value > 16 ? "NORTH" : "SOUTH";
-            if (string.IsNullOrEmpty(region))
-                region = HttpContext.Items["Region"] as string; // fallback middleware
-
-            if (string.IsNullOrEmpty(region))
-                return BadRequest(new { error = "Không xác định được khu vực" });
+            var region = LocationRoutingService.ResolveRegion(request.StartLat, request.Province);
 
             var userIdClaim = User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdClaim))
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
                 return Unauthorized(new { error = "Token không hợp lệ" });
-
-            int userId = int.Parse(userIdClaim);
 
             try
             {
                 var tripId = await _dbRetry.ExecuteWithRetry(async conn =>
                 {
-                    var sql = @"
+                    const string sql = @"
                         INSERT INTO Trips (UserID, DriverID, Status, Price, StartLat, StartLng, EndLat, EndLng, CreatedAt)
                         VALUES (@UserId, @DriverId, 'Requested', @Price, @StartLat, @StartLng, @EndLat, @EndLng, NOW())
                         RETURNING TripID;";
+
                     return await conn.ExecuteScalarAsync<int>(sql, new
                     {
                         UserId = userId,
@@ -57,11 +47,11 @@ namespace RideAPI.Controllers
                         request.EndLat,
                         request.EndLng
                     });
-                }, region, true); // write operation
+                }, region, true);
 
                 return Ok(new { tripId, message = "Đặt chuyến thành công" });
             }
-            catch (Exception ex) when (ex.Message == "MASTER_DOWN_CANNOT_WRITE")
+            catch (InvalidOperationException ex) when (ex.Message == "MASTER_DOWN_CANNOT_WRITE")
             {
                 return StatusCode(503, new { error = "Hệ thống đang ở chế độ chỉ đọc, không thể đặt chuyến" });
             }
@@ -71,44 +61,39 @@ namespace RideAPI.Controllers
             }
         }
 
-        // GET: api/rides/history
         [HttpGet("history")]
-        public async Task<IActionResult> GetHistory()
+        public async Task<IActionResult> GetHistory([FromQuery] double? latitude, [FromQuery] string? province)
         {
-            var region = HttpContext.Items["Region"] as string;
-            if (string.IsNullOrEmpty(region))
-                return BadRequest(new { error = "Không xác định được khu vực" });
+            var region = LocationRoutingService.ResolveRegion(latitude, province);
 
             var userIdClaim = User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdClaim))
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
                 return Unauthorized();
-
-            int userId = int.Parse(userIdClaim);
 
             try
             {
                 var trips = await _dbRetry.ExecuteWithRetry(async conn =>
                 {
-                    var sql = @"
-                        SELECT TripID, UserID, DriverID, Status, Price, 
+                    const string sql = @"
+                        SELECT TripID, UserID, DriverID, Status, Price,
                                StartLat, StartLng, EndLat, EndLng,
                                PaymentAmount, DriverRating, DriverComment, CreatedAt
                         FROM Trips
                         WHERE UserID = @UserId
                         ORDER BY CreatedAt DESC";
-                    return await conn.QueryAsync<Trip>(sql, new { UserId = userId });
-                }, region, false); // read operation
+
+                    return (await conn.QueryAsync<Trip>(sql, new { UserId = userId })).ToList();
+                }, region, false);
 
                 return Ok(trips);
             }
             catch (Exception ex)
-            {   
+            {
                 return StatusCode(500, new { error = "Lỗi khi lấy lịch sử: " + ex.Message });
             }
         }
     }
 
-    // DTO
     public class BookRideRequest
     {
         public int DriverId { get; set; }
@@ -117,6 +102,6 @@ namespace RideAPI.Controllers
         public double StartLng { get; set; }
         public double EndLat { get; set; }
         public double EndLng { get; set; }
+        public string? Province { get; set; }
     }
-
 }

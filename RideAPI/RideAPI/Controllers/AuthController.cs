@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using RideAPI.Services;
 
 namespace RideAPI.Controllers
@@ -27,9 +27,7 @@ namespace RideAPI.Controllers
 
         // POST: api/auth/login
         [HttpPost("login")]
-        public async Task<IActionResult> Login(
-            [FromHeader(Name = "X-User-Latitude")] double? userLatitude,
-            [FromBody] LoginRequest request)
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
             var email = request.Email?.Trim() ?? string.Empty;
             var password = request.Password ?? string.Empty;
@@ -37,42 +35,41 @@ namespace RideAPI.Controllers
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
                 return BadRequest(new { message = "Email và mật khẩu không được để trống." });
 
-            double lat = GetLatitude(userLatitude);
+            var region = LocationRoutingService.ResolveRegion(request.Latitude, request.Province);
             try
             {
-                using var conn = _db.GetConnection(lat);
-                await conn.OpenAsync();
+                using var conn = await _db.GetConnectionAsync(region, isWrite: false);
 
-                var sql = @"SELECT u.UserID, u.Email, u.Role, u.CustomerID, u.DriverID,
-                                   CASE WHEN LOWER(u.IsActive::text) IN ('1', 't', 'true') THEN TRUE ELSE FALSE END AS IsActive,
-                                   COALESCE(c.FullName, d.Name, u.Name) AS DisplayName,
-                                   COALESCE(c.Phone, d.Phone, u.Phone) AS DisplayPhone
-                            FROM Users u
-                            LEFT JOIN Customers c ON c.CustomerID = u.CustomerID
-                            LEFT JOIN Drivers d ON d.DriverID = u.DriverID
-                            WHERE u.Email = @email AND u.Password = @pwd
-                            LIMIT 1";
+                const string sql = @"
+                    SELECT u.UserID, u.Email, u.Role, u.CustomerID, u.DriverID,
+                           COALESCE(c.FullName, d.Name, u.Name) AS DisplayName,
+                           COALESCE(c.Phone, d.Phone, u.Phone) AS DisplayPhone,
+                           u.IsActive
+                    FROM Users u
+                    LEFT JOIN Customers c ON c.CustomerID = u.CustomerID
+                    LEFT JOIN Drivers d ON d.DriverID = u.DriverID
+                    WHERE u.Email = @email AND u.Password = @pwd
+                    LIMIT 1";
 
-                using var cmd = new NpgsqlCommand(sql, conn);
+                await using var cmd = new NpgsqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@email", email);
                 cmd.Parameters.AddWithValue("@pwd", password);
-                using var reader = await cmd.ExecuteReaderAsync();
+                await using var reader = await cmd.ExecuteReaderAsync();
 
                 if (!await reader.ReadAsync())
                     return Unauthorized(new { message = "Sai email hoặc mật khẩu." });
 
-                bool isActive = reader.GetBoolean(reader.GetOrdinal("IsActive"));
-                if (!isActive)
+                if (!reader.IsDBNull(reader.GetOrdinal("IsActive")) && !reader.GetBoolean(reader.GetOrdinal("IsActive")))
                     return Unauthorized(new { message = "Tài khoản đã bị khóa." });
 
                 var userId = reader.GetInt32(reader.GetOrdinal("UserID"));
                 var accountEmail = reader.GetString(reader.GetOrdinal("Email"));
                 var role = reader.GetString(reader.GetOrdinal("Role"));
-                var displayName = reader.IsDBNull(reader.GetOrdinal("DisplayName")) ? "" : reader.GetString(reader.GetOrdinal("DisplayName"));
-                var displayPhone = reader.IsDBNull(reader.GetOrdinal("DisplayPhone")) ? "" : reader.GetString(reader.GetOrdinal("DisplayPhone"));
+                var displayName = reader.IsDBNull(reader.GetOrdinal("DisplayName")) ? string.Empty : reader.GetString(reader.GetOrdinal("DisplayName"));
+                var displayPhone = reader.IsDBNull(reader.GetOrdinal("DisplayPhone")) ? string.Empty : reader.GetString(reader.GetOrdinal("DisplayPhone"));
                 int? customerId = reader.IsDBNull(reader.GetOrdinal("CustomerID")) ? null : reader.GetInt32(reader.GetOrdinal("CustomerID"));
                 int? driverId = reader.IsDBNull(reader.GetOrdinal("DriverID")) ? null : reader.GetInt32(reader.GetOrdinal("DriverID"));
-                int regionId = lat > 16 ? 1 : 2;
+                int regionId = region == "NORTH" ? 1 : 2;
 
                 var token = GenerateJwtToken(userId, displayName, accountEmail, regionId, role, customerId, driverId);
 
@@ -87,7 +84,8 @@ namespace RideAPI.Controllers
                     name = displayName,
                     phone = displayPhone,
                     email = accountEmail,
-                    regionId
+                    regionId,
+                    region
                 });
             }
             catch (NpgsqlException ex)
@@ -98,9 +96,7 @@ namespace RideAPI.Controllers
 
         // POST: api/auth/register
         [HttpPost("register")]
-        public async Task<IActionResult> Register(
-            [FromHeader(Name = "X-User-Latitude")] double? userLatitude,
-            [FromBody] RegisterRequest request)
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
             var name = request.Name?.Trim() ?? string.Empty;
             var email = request.Email?.Trim() ?? string.Empty;
@@ -110,37 +106,33 @@ namespace RideAPI.Controllers
             if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
                 return BadRequest(new { message = "Vui lòng điền đầy đủ thông tin." });
 
-            double lat = GetLatitude(userLatitude);
-            int regionId = lat > 16 ? 1 : 2;
+            var region = LocationRoutingService.ResolveRegion(request.Latitude, request.Province);
+            int regionId = region == "NORTH" ? 1 : 2;
 
             try
             {
-                using var conn = _db.GetConnection(lat);
-                await conn.OpenAsync();
+                using var conn = await _db.GetConnectionAsync(region, isWrite: true);
 
-                // Kiểm tra email tồn tại
-                var checkSql = "SELECT COUNT(*) FROM Users WHERE Email = @email";
-                using var checkCmd = new NpgsqlCommand(checkSql, conn);
+                const string checkSql = "SELECT COUNT(*) FROM Users WHERE Email = @email";
+                await using var checkCmd = new NpgsqlCommand(checkSql, conn);
                 checkCmd.Parameters.AddWithValue("@email", email);
                 var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
                 if (count > 0)
                     return Conflict(new { message = "Email đã được đăng ký." });
 
-                using var tx = await conn.BeginTransactionAsync();
+                await using var tx = await conn.BeginTransactionAsync();
 
-                // Thêm Customer
-                var insertCustomerSql = @"INSERT INTO Customers (FullName, Phone, Email) VALUES (@name, @phone, @email) RETURNING CustomerID";
-                using var customerCmd = new NpgsqlCommand(insertCustomerSql, conn, tx);
+                const string insertCustomerSql = @"INSERT INTO Customers (FullName, Phone, Email) VALUES (@name, @phone, @email) RETURNING CustomerID";
+                await using var customerCmd = new NpgsqlCommand(insertCustomerSql, conn, tx);
                 customerCmd.Parameters.AddWithValue("@name", name);
                 customerCmd.Parameters.AddWithValue("@phone", phone);
                 customerCmd.Parameters.AddWithValue("@email", email);
                 var newCustomerId = Convert.ToInt32(await customerCmd.ExecuteScalarAsync());
 
-                // Thêm User
-                var insertUserSql = @"INSERT INTO Users (Email, Password, Role, CustomerID, Name, Phone, RegionID, IsActive)
+                const string insertUserSql = @"INSERT INTO Users (Email, Password, Role, CustomerID, Name, Phone, RegionID, IsActive)
                                       VALUES (@email, @pwd, 'Customer', @cid, @name, @phone, @region, TRUE)
                                       RETURNING UserID";
-                using var userCmd = new NpgsqlCommand(insertUserSql, conn, tx);
+                await using var userCmd = new NpgsqlCommand(insertUserSql, conn, tx);
                 userCmd.Parameters.AddWithValue("@email", email);
                 userCmd.Parameters.AddWithValue("@pwd", password);
                 userCmd.Parameters.AddWithValue("@cid", newCustomerId);
@@ -151,7 +143,6 @@ namespace RideAPI.Controllers
 
                 await tx.CommitAsync();
 
-                // Tạo token cho user mới
                 var token = GenerateJwtToken(newUserId, name, email, regionId, "Customer", newCustomerId, null);
 
                 return Ok(new
@@ -164,24 +155,17 @@ namespace RideAPI.Controllers
                     driverId = (int?)null,
                     name,
                     email,
-                    regionId
+                    regionId,
+                    region
                 });
             }
             catch (NpgsqlException ex)
             {
                 if (string.Equals(ex.SqlState, PostgresErrorCodes.UniqueViolation, StringComparison.Ordinal))
                     return Conflict(new { message = "Email đã được đăng ký." });
+
                 return StatusCode(503, new { message = "Đăng ký thất bại.", detail = _env.IsDevelopment() ? ex.Message : null });
             }
-        }
-
-        private double GetLatitude(double? userLatitude)
-        {
-            if (userLatitude.HasValue && userLatitude.Value >= -90 && userLatitude.Value <= 90)
-                return userLatitude.Value;
-            if (Request.Headers.TryGetValue("X-User-Latitude", out var val) && double.TryParse(val, out var lat) && lat >= -90 && lat <= 90)
-                return lat;
-            return 10.8; // mặc định miền Nam
         }
 
         private string GenerateJwtToken(int userId, string name, string email, int regionId, string role, int? customerId, int? driverId)
@@ -193,12 +177,13 @@ namespace RideAPI.Controllers
             var claims = new List<Claim>
             {
                 new(JwtRegisteredClaimNames.Sub, userId.ToString()),
-                new(JwtRegisteredClaimNames.Name, name ?? ""),
-                new(JwtRegisteredClaimNames.Email, email ?? ""),
+                new(JwtRegisteredClaimNames.Name, name ?? string.Empty),
+                new(JwtRegisteredClaimNames.Email, email ?? string.Empty),
                 new("regionId", regionId.ToString()),
-                new("role", role ?? ""),
+                new("role", role ?? string.Empty),
                 new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
+
             if (customerId.HasValue) claims.Add(new Claim("customerId", customerId.ToString()));
             if (driverId.HasValue) claims.Add(new Claim("driverId", driverId.ToString()));
 
@@ -207,8 +192,8 @@ namespace RideAPI.Controllers
                 audience: _config["Jwt:Audience"] ?? "RideApp",
                 claims: claims,
                 expires: DateTime.UtcNow.AddDays(1),
-                signingCredentials: creds
-            );
+                signingCredentials: creds);
+
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
@@ -217,6 +202,8 @@ namespace RideAPI.Controllers
     {
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
+        public double? Latitude { get; set; }
+        public string? Province { get; set; }
     }
 
     public class RegisterRequest
@@ -225,5 +212,7 @@ namespace RideAPI.Controllers
         public string Phone { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
+        public double? Latitude { get; set; }
+        public string? Province { get; set; }
     }
 }

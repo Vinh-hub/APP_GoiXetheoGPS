@@ -22,34 +22,25 @@ namespace RideAPI.Controllers
         [HttpGet("stats")]
         public async Task<IActionResult> GetStats()
         {
-            var north = await GetRegionStatsAsync("NORTH", "DB1 (Primary)");
-            var south = await GetRegionStatsAsync("SOUTH", "DB2 (Replica)");
-
+            var north = await GetRegionStatsAsync("NORTH", "North Primary/Replica");
+            var south = await GetRegionStatsAsync("SOUTH", "South Primary/Replica");
             return Ok(new[] { north, south });
         }
 
         [HttpGet("stats/primary")]
         public async Task<IActionResult> GetPrimaryStats()
-        {
-            var stat = await GetRegionStatsAsync("NORTH", "DB1 (Primary)");
-            return Ok(stat);
-        }
+            => Ok(await GetRegionStatsAsync("NORTH", "North Primary"));
 
         [HttpGet("stats/secondary")]
         [HttpGet("stats/replica")]
         public async Task<IActionResult> GetSecondaryStats()
-        {
-            var stat = await GetRegionStatsAsync("SOUTH", "DB2 (Replica)");
-            return Ok(stat);
-        }
+            => Ok(await GetRegionStatsAsync("SOUTH", "South Replica"));
 
         private async Task<DatabaseStatsDto> GetRegionStatsAsync(string region, string displayName)
         {
             try
             {
                 await using var conn = await _db.GetConnectionAsync(region, isWrite: false);
-                await conn.OpenAsync();
-
                 var count = await ReadCountAsync(conn);
                 var lastUpdated = await ReadLastUpdatedAsync(conn);
 

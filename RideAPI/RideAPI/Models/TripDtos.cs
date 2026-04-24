@@ -8,6 +8,7 @@
         public string PickupAddress { get; set; } = string.Empty;
         public string DestinationAddress { get; set; } = string.Empty;
         public decimal Price { get; set; }
+        public string? Province { get; set; }
     }
 
     public class AcceptTripDto

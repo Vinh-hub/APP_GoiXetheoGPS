@@ -1,5 +1,5 @@
-﻿using Polly;
-using Npgsql;
+﻿using Npgsql;
+using Polly;
 
 namespace RideAPI.Services
 {
@@ -19,6 +19,7 @@ namespace RideAPI.Services
             var retryPolicy = Policy<T>
                 .Handle<NpgsqlException>(ex => ex.IsTransient)
                 .Or<TimeoutException>()
+                .Or<InvalidOperationException>(ex => ex.Message == "MASTER_DOWN_CANNOT_WRITE" || ex.Message == "ALL_DB_NODES_DOWN")
                 .WaitAndRetryAsync(
                     3,
                     retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
@@ -30,7 +31,7 @@ namespace RideAPI.Services
 
             return await retryPolicy.ExecuteAsync(async () =>
             {
-                using var conn = await _dbService.GetConnectionAsync(region, isWrite);
+                await using var conn = await _dbService.GetConnectionAsync(region, isWrite);
                 return await action(conn);
             });
         }

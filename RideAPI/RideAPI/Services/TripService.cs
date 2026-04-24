@@ -1,94 +1,84 @@
-﻿using Npgsql;
+﻿using Dapper;
 using RideAPI.Models;
 
 namespace RideAPI.Services
 {
     public class TripService
     {
-        private readonly DatabaseService db;
+        private readonly DatabaseService _db;
+        private readonly DbRetryService _retry;
 
-        public TripService(DatabaseService databaseService)
+        public TripService(DatabaseService databaseService, DbRetryService retry)
         {
-            db = databaseService;
+            _db = databaseService;
+            _retry = retry;
         }
 
-        public void RequestTrip(TripRequestDto request)
+        public async Task<int> RequestTripAsync(TripRequestDto request)
         {
-            using var conn = db.GetConnection(request.Latitude);
-            conn.Open();
-
-            var sql = @"INSERT INTO Trips (UserID, DriverID, Status, Price, CreatedAt)
-                        VALUES (@userId, NULL, @status, @price, NOW())";
-
-            using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@userId", request.UserID);
-            cmd.Parameters.AddWithValue("@status", "Requested");
-            cmd.Parameters.AddWithValue("@price", request.Price);
-
-            cmd.ExecuteNonQuery();
-        }
-
-        public Trip? GetTrip(int id, double latitude)
-        {
-            using var conn = db.GetConnection(latitude);
-            conn.Open();
-
-            var sql = @"SELECT TripID, UserID, DriverID, Status, Price, CreatedAt
-                        FROM Trips
-                        WHERE TripID = @tripId";
-
-            using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@tripId", id);
-
-            using var reader = cmd.ExecuteReader();
-
-            if (reader.Read())
+            var region = LocationRoutingService.ResolveRegion(request.Latitude, null);
+            return await _retry.ExecuteWithRetry(async conn =>
             {
-                return new Trip
+                const string sql = @"
+                    INSERT INTO Trips (UserID, DriverID, Status, Price, StartLat, StartLng, EndLat, EndLng, CreatedAt)
+                    VALUES (@UserId, NULL, @Status, @Price, @StartLat, @StartLng, @EndLat, @EndLng, NOW())
+                    RETURNING TripID;";
+
+                return await conn.ExecuteScalarAsync<int>(sql, new
                 {
-                    TripID = Convert.ToInt32(reader["TripID"]),
-                    UserID = Convert.ToInt32(reader["UserID"]),
-                    DriverID = reader["DriverID"] is DBNull ? 0 : Convert.ToInt32(reader["DriverID"]),
-                    Status = Convert.ToString(reader["Status"]) ?? string.Empty,
-                    Price = Convert.ToDecimal(reader["Price"]),
-                    StartLat = latitude,
-                    CreatedAt = Convert.ToDateTime(reader["CreatedAt"])
-                };
-            }
-
-            return null;
+                    UserId = request.UserID,
+                    Status = "Requested",
+                    request.Price,
+                    StartLat = request.Latitude,
+                    StartLng = request.Longitude,
+                    EndLat = request.Longitude,
+                    EndLng = request.Longitude
+                });
+            }, region, true);
         }
 
-        public void AcceptTrip(AcceptTripDto request)
+        public async Task<Trip?> GetTripAsync(int id, double latitude)
         {
-            using var conn = db.GetConnection(request.Latitude);
-            conn.Open();
+            var region = LocationRoutingService.ResolveRegionFromLatitude(latitude);
+            return await _retry.ExecuteWithRetry(async conn =>
+            {
+                const string sql = @"
+                    SELECT TripID, UserID, DriverID, Status, Price, StartLat, StartLng, EndLat, EndLng, PaymentAmount, DriverRating, DriverComment, CreatedAt
+                    FROM Trips
+                    WHERE TripID = @tripId";
 
-            var sql = @"UPDATE Trips
-                        SET DriverID = @driverId, Status = 'Accepted'
-                        WHERE TripID = @tripId";
-
-            using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@driverId", request.DriverID);
-            cmd.Parameters.AddWithValue("@tripId", request.TripID);
-
-            cmd.ExecuteNonQuery();
+                return await conn.QuerySingleOrDefaultAsync<Trip>(sql, new { tripId = id });
+            }, region, false);
         }
 
-        public void CompleteTrip(CompleteTripDto request)
+        public async Task AcceptTripAsync(AcceptTripDto request)
         {
-            using var conn = db.GetConnection(request.Latitude);
-            conn.Open();
+            var region = LocationRoutingService.ResolveRegionFromLatitude(request.Latitude);
+            await _retry.ExecuteWithRetry(async conn =>
+            {
+                const string sql = @"
+                    UPDATE Trips
+                    SET DriverID = @driverId, Status = 'Accepted'
+                    WHERE TripID = @tripId";
 
-            var sql = @"UPDATE Trips
-                        SET Status = 'Completed', Price = @finalPrice
-                        WHERE TripID = @tripId";
+                await conn.ExecuteAsync(sql, new { driverId = request.DriverID, tripId = request.TripID });
+                return 0;
+            }, region, true);
+        }
 
-            using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@finalPrice", request.FinalPrice);
-            cmd.Parameters.AddWithValue("@tripId", request.TripID);
+        public async Task CompleteTripAsync(CompleteTripDto request)
+        {
+            var region = LocationRoutingService.ResolveRegionFromLatitude(request.Latitude);
+            await _retry.ExecuteWithRetry(async conn =>
+            {
+                const string sql = @"
+                    UPDATE Trips
+                    SET Status = 'Completed', Price = @finalPrice
+                    WHERE TripID = @tripId";
 
-            cmd.ExecuteNonQuery();
+                await conn.ExecuteAsync(sql, new { finalPrice = request.FinalPrice, tripId = request.TripID });
+                return 0;
+            }, region, true);
         }
     }
 }
