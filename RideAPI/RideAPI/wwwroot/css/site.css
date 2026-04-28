@@ -535,6 +535,123 @@
     border: 1px solid var(--line-strong);
 }
 
+.admin-form-shell {
+    max-width: 920px;
+    margin: 0 auto;
+}
+
+.admin-form-card {
+    padding: 18px;
+}
+
+.admin-form-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.admin-form-title {
+    margin: 0;
+    font-size: 30px;
+    line-height: 1.2;
+}
+
+.admin-form-subtitle {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: 720px;
+}
+
+.admin-form-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 84px;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 999px;
+    background: #eaf9ec;
+    color: #2e6f45;
+    font-weight: 700;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.admin-form-sections {
+    display: grid;
+    gap: 16px;
+}
+
+.admin-form-section {
+    border: 1px solid #edf4ef;
+    border-radius: 14px;
+    padding: 16px;
+    background: #fcfffc;
+}
+
+.admin-form-section-title {
+    margin: 0 0 4px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.admin-form-section-subtitle {
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.admin-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 16px;
+}
+
+.admin-form-field {
+    min-width: 0;
+}
+
+.admin-form-field.full {
+    grid-column: 1 / -1;
+}
+
+.admin-form-label {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 6px;
+    color: #111827;
+    font-weight: 600;
+}
+
+.admin-form-input,
+.admin-form-select {
+    width: 100%;
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    min-height: 42px;
+    padding: 10px 12px;
+    font-size: 14px;
+    background: #fff;
+}
+
+.admin-form-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+}
+
+.admin-form-check input {
+    width: 16px;
+    height: 16px;
+}
+
 .form-row {
     margin-bottom: 10px;
 }
@@ -549,6 +666,7 @@
     margin-top: 14px;
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .error {
@@ -676,5 +794,14 @@
 
     .quick-title {
         font-size: 15px;
+    }
+
+    .admin-form-header,
+    .admin-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-form-badge {
+        align-self: flex-start;
     }
 }

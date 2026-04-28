@@ -76,16 +76,40 @@ public class AdminController : Controller
         if (!string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
             return Forbid();
 
+        var fallbackRegionId = ParseRegionId(User.FindFirst("regionId")?.Value);
+        var scopedRegionId = AdminRegionScopeHelper.GetScopedRegionId(Request, fallbackRegionId);
+
         var model = new AdminDashboardViewModel
         {
             Name = User.FindFirst("name")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? "Admin",
             Email = User.FindFirst("email")?.Value ?? User.FindFirst(ClaimTypes.Email)?.Value ?? string.Empty,
             Role = role,
-            RegionId = User.FindFirst("regionId")?.Value ?? string.Empty,
+            RegionId = fallbackRegionId.ToString(),
+            ScopedRegionId = scopedRegionId,
+            ScopedRegionText = AdminRegionScopeHelper.GetScopeLabel(scopedRegionId),
+            ScopeLatitude = AdminRegionScopeHelper.GetScopeLatitudeText(Request),
+            ScopeProvince = AdminRegionScopeHelper.GetScopeProvince(Request),
             GeneratedAtUtc = DateTime.UtcNow
         };
 
         return View(model);
+    }
+
+    [HttpPost("dashboard/scope")]
+    [ValidateAntiForgeryToken]
+    public IActionResult UpdateScope(double? latitude, string? province)
+    {
+        var role = User.FindFirst("role")?.Value ?? User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+        if (!string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
+            return Forbid();
+
+        var fallbackRegionId = ParseRegionId(User.FindFirst("regionId")?.Value);
+        var scopedRegionId = (latitude.HasValue || !string.IsNullOrWhiteSpace(province))
+            ? LocationRoutingService.ResolveRegionId(latitude, province)
+            : fallbackRegionId;
+
+        AdminRegionScopeHelper.SetScopeCookies(Response, scopedRegionId, latitude, province);
+        return RedirectToAction(nameof(Dashboard));
     }
 
     [HttpGet("trips")]
@@ -94,6 +118,11 @@ public class AdminController : Controller
         var role = User.FindFirst("role")?.Value ?? User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
         if (!string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
             return Forbid();
+
+        var fallbackRegionId = ParseRegionId(User.FindFirst("regionId")?.Value);
+        var scopedRegionId = AdminRegionScopeHelper.GetScopedRegionId(Request, fallbackRegionId);
+        ViewBag.ScopeLatitude = AdminRegionScopeHelper.GetScopeLatitudeText(Request);
+        ViewBag.ScopeRegionId = scopedRegionId;
 
         return View();
     }
@@ -104,6 +133,11 @@ public class AdminController : Controller
         var role = User.FindFirst("role")?.Value ?? User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
         if (!string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
             return Forbid();
+
+        var fallbackRegionId = ParseRegionId(User.FindFirst("regionId")?.Value);
+        var scopedRegionId = AdminRegionScopeHelper.GetScopedRegionId(Request, fallbackRegionId);
+        ViewBag.ScopeLatitude = AdminRegionScopeHelper.GetScopeLatitudeText(Request);
+        ViewBag.ScopeRegionId = scopedRegionId;
 
         return View();
     }
@@ -177,5 +211,13 @@ LIMIT 1";
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static int ParseRegionId(string? rawRegionId)
+    {
+        if (int.TryParse(rawRegionId, out var regionId) && (regionId == 1 || regionId == 2))
+            return regionId;
+
+        return 2;
     }
 }

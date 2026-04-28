@@ -63,7 +63,7 @@ public sealed class AuthApiService
             _session.RegionId = session.RegionId;
             return session;
         }
-        catch
+        catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
             _session.Clear();
             return null;

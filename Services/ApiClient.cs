@@ -45,7 +45,23 @@ public sealed class ApiClient
 
         await AddHeadersAsync(request, requiresAuth, cancellationToken);
 
-        using var response = await _http.SendAsync(request, cancellationToken);
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            throw new InvalidOperationException(
+                $"Không kết nối được tới API ({WebApiServerConfig.BaseUrl}). Hãy kiểm tra API đang chạy và emulator có truy cập được server.");
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException(
+                $"Kết nối API bị hết thời gian chờ ({WebApiServerConfig.BaseUrl}). Hãy kiểm tra server và kết nối mạng.");
+        }
+
+        using var responseScope = response;
         await EnsureSuccessAsync(response, cancellationToken, requiresAuth);
 
         if (typeof(T) == typeof(object) || response.Content is null)

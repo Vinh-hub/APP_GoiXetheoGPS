@@ -1,6 +1,10 @@
 @{
     ViewData["Title"] = "Tài xế gần đây";
     ViewData["Nav"] = "nearby";
+    var defaultLatitude = !string.IsNullOrWhiteSpace(ViewBag.ScopeLatitude as string)
+        ? (string)ViewBag.ScopeLatitude
+        : ((int?)ViewBag.ScopeRegionId == 1 ? "21.0285" : "10.7769");
+    var defaultLongitude = ((int?)ViewBag.ScopeRegionId == 1) ? "105.8542" : "106.7009";
 }
 
 <h1 class="panel-title">Tài xế lân cận</h1>
@@ -14,11 +18,11 @@
     <div class="tool-row nearby">
         <div>
             <div class="field-label">Vĩ độ (Latitude)</div>
-            <input class="field-input" id="latitude" type="number" step="0.000001" value="10.8" placeholder="21.0285" />
+            <input class="field-input" id="latitude" type="number" step="0.000001" value="@defaultLatitude" placeholder="21.0285" />
         </div>
         <div>
             <div class="field-label">Kinh độ (Longitude)</div>
-            <input class="field-input" id="longitude" type="number" step="0.000001" value="106.6" placeholder="105.8542" />
+            <input class="field-input" id="longitude" type="number" step="0.000001" value="@defaultLongitude" placeholder="105.8542" />
         </div>
         <div>
             <div class="field-label">Bán kính (km)</div>
@@ -31,7 +35,7 @@
     </div>
     <div style="margin-top:12px;">
         <div class="field-label">X-User-Latitude fallback</div>
-        <input class="field-input" id="lat" type="number" step="0.000001" value="10.8" placeholder="10.8" />
+        <input class="field-input" id="lat" type="number" step="0.000001" value="@defaultLatitude" placeholder="10.8" />
     </div>
     <div class="tool-actions">
         <button id="btnLoad" type="button" class="tool-btn">🔎 Tìm tài xế</button>

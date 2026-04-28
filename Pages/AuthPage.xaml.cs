@@ -1,4 +1,5 @@
 using APP_GoiXetheoGPS.Services;
+using System.Globalization;
 
 namespace APP_GoiXetheoGPS.Pages;
 
@@ -17,146 +18,108 @@ public partial class AuthPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        UpdateJwtStatus();
-        _ = ValidateAndRenderSessionAsync();
+        UpdateJwtStatusLabel();
+        _ = RefreshSessionSilentlyAsync();
     }
 
-    async void LoginButton_OnClicked(object? sender, EventArgs e)
+    async void CheckSessionButton_OnClicked(object? sender, EventArgs e)
     {
         try
         {
-            LoginButton.IsEnabled = false;
-            LoginButton.Text = "Đang đăng nhập...";
-
-            var email = LoginEmailEntry.Text?.Trim() ?? string.Empty;
-            var password = LoginPasswordEntry.Text ?? string.Empty;
-
-            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-            {
-                await DisplayAlertAsync("Đăng nhập", "Vui lòng nhập email và mật khẩu.", "OK");
-                return;
-            }
-
-            var result = await _authApiService.LoginAsync(email, password);
-            UpdateJwtStatus();
-            await ValidateAndRenderSessionAsync();
-
-            await DisplayAlertAsync(
-                "Đăng nhập thành công",
-                result?.Message ?? "Đã lưu JWT cho các API cần xác thực.",
-                "OK");
-        }
-        catch (Exception ex)
-        {
-            await DisplayAlertAsync("Đăng nhập", ApiErrorHandler.ToUserMessage(ex), "OK");
+            CheckSessionButton.IsEnabled = false;
+            CheckSessionButton.Text = "Đang kiểm tra...";
+            await ValidateAndRenderSessionAsync(showFeedback: true);
         }
         finally
         {
-            LoginButton.IsEnabled = true;
-            LoginButton.Text = "Đăng nhập";
-        }
-    }
-
-    async void RegisterButton_OnClicked(object? sender, EventArgs e)
-    {
-        try
-        {
-            RegisterButton.IsEnabled = false;
-            RegisterButton.Text = "Đang đăng ký...";
-
-            var request = new AuthApiService.RegisterRequest(
-                RegisterNameEntry.Text?.Trim() ?? string.Empty,
-                RegisterPhoneEntry.Text?.Trim() ?? string.Empty,
-                RegisterEmailEntry.Text?.Trim() ?? string.Empty,
-                RegisterPasswordEntry.Text ?? string.Empty);
-
-            if (string.IsNullOrWhiteSpace(request.Name)
-                || string.IsNullOrWhiteSpace(request.Email)
-                || string.IsNullOrWhiteSpace(request.Password))
-            {
-                await DisplayAlertAsync("Đăng ký", "Vui lòng nhập đủ họ tên, email, mật khẩu.", "OK");
-                return;
-            }
-
-            var result = await _authApiService.RegisterAsync(request);
-            UpdateJwtStatus();
-            await ValidateAndRenderSessionAsync();
-
-            await DisplayAlertAsync(
-                "Đăng ký thành công",
-                result?.Message ?? "Tài khoản đã được tạo và JWT đã lưu.",
-                "OK");
-        }
-        catch (Exception ex)
-        {
-            await DisplayAlertAsync("Đăng ký", ApiErrorHandler.ToUserMessage(ex), "OK");
-        }
-        finally
-        {
-            RegisterButton.IsEnabled = true;
-            RegisterButton.Text = "Đăng ký";
+            CheckSessionButton.IsEnabled = true;
+            CheckSessionButton.Text = "Kiểm tra phiên";
         }
     }
 
     async void LogoutButton_OnClicked(object? sender, EventArgs e)
     {
-        await _authApiService.LogoutAsync();
-        UpdateJwtStatus();
-        SessionStatusLabel.Text = "Đã đăng xuất.";
-        await DisplayAlertAsync("Đăng xuất", "Đã đăng xuất.", "OK");
-    }
-
-    async void CheckSessionButton_OnClicked(object? sender, EventArgs e)
-    {
-        await ValidateAndRenderSessionAsync(showAlert: true);
-    }
-
-    void UpdateJwtStatus()
-    {
-        var token = _sessionService.AccessToken;
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            JwtStatusLabel.Text = "Chưa đăng nhập";
-            return;
-        }
-
-        var expiry = _sessionService.GetTokenExpiryUtc();
-        var expiryText = expiry.HasValue
-            ? expiry.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")
-            : "không xác định";
-
-        JwtStatusLabel.Text = $"Đã có JWT (hết hạn: {expiryText})";
-    }
-
-    async Task ValidateAndRenderSessionAsync(bool showAlert = false)
-    {
         try
         {
-            CheckSessionButton.IsEnabled = false;
-            var session = await _authApiService.ValidateSessionAsync();
-            if (session is null)
-            {
-                SessionStatusLabel.Text = "Phiên không hợp lệ hoặc đã hết hạn.";
-                UpdateJwtStatus();
-                if (showAlert)
-                    await DisplayAlertAsync("Phiên đăng nhập", "Phiên không hợp lệ. Vui lòng đăng nhập lại.", "OK");
-                return;
-            }
-
-            var name = string.IsNullOrWhiteSpace(session.Name) ? $"User #{session.UserId}" : session.Name;
-            SessionStatusLabel.Text = $"Phiên hợp lệ: {name} - {session.Role} - vùng {session.RegionId}";
-            if (showAlert)
-                await DisplayAlertAsync("Phiên đăng nhập", "JWT hợp lệ, phiên đang hoạt động.", "OK");
+            LogoutButton.IsEnabled = false;
+            LogoutButton.Text = "Đang đăng xuất...";
+            await _authApiService.LogoutAsync();
+            UpdateJwtStatusLabel();
+            SessionStatusLabel.Text = "Phiên đã được đăng xuất.";
+            await this.DisplayAlertAsync("Đăng xuất", "Đã đăng xuất.", "OK");
         }
         catch (Exception ex)
         {
-            SessionStatusLabel.Text = "Không thể kiểm tra phiên.";
-            if (showAlert)
-                await DisplayAlertAsync("Phiên đăng nhập", ApiErrorHandler.ToUserMessage(ex), "OK");
+            await this.DisplayAlertAsync("Đăng xuất", ApiErrorHandler.ToUserMessage(ex), "OK");
         }
         finally
         {
-            CheckSessionButton.IsEnabled = true;
+            LogoutButton.IsEnabled = true;
+            LogoutButton.Text = "Đăng xuất";
         }
+    }
+
+    async Task ValidateAndRenderSessionAsync()
+        => await ValidateAndRenderSessionAsync(showFeedback: false);
+
+    async Task RefreshSessionSilentlyAsync()
+    {
+        try
+        {
+            await ValidateAndRenderSessionAsync(showFeedback: false);
+        }
+        catch
+        {
+            SessionStatusLabel.Text = "Không thể kiểm tra phiên lúc này.";
+        }
+    }
+
+    async Task ValidateAndRenderSessionAsync(bool showFeedback)
+    {
+        try
+        {
+            var session = await _authApiService.ValidateSessionAsync();
+            if (session is null)
+            {
+                _sessionService.Clear();
+                UpdateJwtStatusLabel();
+                SessionStatusLabel.Text = "Phiên không hợp lệ hoặc đã hết hạn.";
+                if (showFeedback)
+                    await this.DisplayAlertAsync("Phiên đăng nhập", "Phiên không hợp lệ hoặc đã hết hạn.", "OK");
+                return;
+            }
+
+            UpdateJwtStatusLabel();
+            SessionStatusLabel.Text = "Phiên hợp lệ.";
+            if (showFeedback)
+                await this.DisplayAlertAsync("Phiên đăng nhập", "Phiên vẫn hợp lệ.", "OK");
+        }
+        catch (Exception ex)
+        {
+            UpdateJwtStatusLabel();
+            SessionStatusLabel.Text = "Không thể kiểm tra phiên lúc này.";
+            if (showFeedback)
+                await this.DisplayAlertAsync("Phiên đăng nhập", ApiErrorHandler.ToUserMessage(ex), "OK");
+        }
+    }
+
+    void UpdateJwtStatusLabel()
+    {
+        var token = _sessionService.AccessToken;
+        JwtStatusLabel.Text = string.IsNullOrWhiteSpace(token)
+            ? "Chưa đăng nhập"
+            : "Đã đăng nhập";
+
+        var expiresUtc = _sessionService.GetTokenExpiryUtc();
+        if (expiresUtc is null)
+        {
+            ExpiryStatusLabel.Text = "Hạn dùng: Không xác định";
+            return;
+        }
+
+        var expiresLocal = expiresUtc.Value.ToLocalTime();
+        var state = expiresUtc.Value <= DateTimeOffset.UtcNow ? "đã hết hạn" : "còn hiệu lực";
+        ExpiryStatusLabel.Text =
+            $"Hạn dùng: {expiresLocal.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture)} ({state})";
     }
 }

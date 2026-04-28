@@ -12,6 +12,7 @@ namespace APP_GoiXetheoGPS
             Routing.RegisterRoute("TripDetail", typeof(Pages.TripDetailPage));
             var currentTheme = Application.Current!.RequestedTheme;
             ThemeSegmentedControl.SelectedIndex = currentTheme == AppTheme.Light ? 0 : 1;
+            CurrentItem = AuthWelcomeShellContent;
         }
         public static async Task DisplaySnackbarAsync(string message)
         {

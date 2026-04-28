@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="APP_GoiXetheoGPS.Pages.RegisterPage"
+             Title="Đăng ký"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="White">
+    <ScrollView>
+        <VerticalStackLayout Padding="24,24,24,24" Spacing="16">
+            <Grid ColumnDefinitions="44,*" ColumnSpacing="0">
+                <Button Text="←"
+                        Clicked="BackButton_OnClicked"
+                        BackgroundColor="Transparent"
+                        TextColor="#111827"
+                        FontSize="18"
+                        WidthRequest="40"
+                        HeightRequest="40"
+                        HorizontalOptions="Start"
+                        Margin="-8,0,0,0"
+                        Padding="0" />
+                <Label Grid.Column="1"
+                       Text="Đăng ký"
+                       HorizontalTextAlignment="Center"
+                       VerticalTextAlignment="Center"
+                       FontSize="20"
+                       FontAttributes="Bold"
+                       TextColor="#111827" />
+            </Grid>
+
+            <VerticalStackLayout Spacing="6" Margin="0,20,0,8">
+                <Label Text="Tạo tài khoản mới"
+                       FontSize="28"
+                       FontAttributes="Bold"
+                       TextColor="#111827" />
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="16">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="Họ tên" FontSize="14" TextColor="#4B5563" />
+                    <Entry x:Name="RegisterNameEntry"
+                           Placeholder="Nguyễn Văn A"
+                           ClearButtonVisibility="WhileEditing"
+                           BackgroundColor="#FFFFFF"
+                           HeightRequest="52" />
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="Số điện thoại" FontSize="14" TextColor="#4B5563" />
+                    <Entry x:Name="RegisterPhoneEntry"
+                           Placeholder="0912345678"
+                           Keyboard="Telephone"
+                           ClearButtonVisibility="WhileEditing"
+                           BackgroundColor="#FFFFFF"
+                           HeightRequest="52" />
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="Email" FontSize="14" TextColor="#4B5563" />
+                    <Entry x:Name="RegisterEmailEntry"
+                           Placeholder="email@example.com"
+                           Keyboard="Email"
+                           ClearButtonVisibility="WhileEditing"
+                           BackgroundColor="#FFFFFF"
+                           HeightRequest="52" />
+                </VerticalStackLayout>
+
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="Mật khẩu" FontSize="14" TextColor="#4B5563" />
+                    <Entry x:Name="RegisterPasswordEntry"
+                           Placeholder="••••••••"
+                           IsPassword="True"
+                           ClearButtonVisibility="WhileEditing"
+                           BackgroundColor="#FFFFFF"
+                           HeightRequest="52" />
+                </VerticalStackLayout>
+
+                <Button x:Name="RegisterButton"
+                        Text="Đăng ký"
+                        Clicked="RegisterButton_OnClicked"
+                        BackgroundColor="#3B82F6"
+                        TextColor="White"
+                        CornerRadius="14"
+                        HeightRequest="52" />
+            </VerticalStackLayout>
+
+            <Label HorizontalTextAlignment="Center"
+                   FontSize="14"
+                   TextColor="#6B7280"
+                   Margin="0,16,0,0">
+                <Label.FormattedText>
+                    <FormattedString>
+                        <Span Text="Đã có tài khoản? " />
+                        <Span Text="Đăng nhập" TextColor="#2563EB" FontAttributes="Bold" />
+                    </FormattedString>
+                </Label.FormattedText>
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="GoLogin_Tapped" />
+                </Label.GestureRecognizers>
+            </Label>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

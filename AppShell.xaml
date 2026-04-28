@@ -9,6 +9,22 @@
     Title="APP_GoiXetheoGPS">
 
     <ShellContent
+        x:Name="AuthWelcomeShellContent"
+        Shell.FlyoutItemIsVisible="False"
+        ContentTemplate="{DataTemplate pages:AuthWelcomePage}"
+        Route="auth-welcome" />
+
+    <ShellContent
+        Shell.FlyoutItemIsVisible="False"
+        ContentTemplate="{DataTemplate pages:LoginPage}"
+        Route="auth-login" />
+
+    <ShellContent
+        Shell.FlyoutItemIsVisible="False"
+        ContentTemplate="{DataTemplate pages:RegisterPage}"
+        Route="auth-register" />
+
+    <ShellContent
         Title="Trang chủ"
         Icon="{StaticResource IconDashboard}"
         ContentTemplate="{DataTemplate pages:MainPage}"
@@ -27,6 +43,7 @@
         Route="trips" />
 
     <ShellContent
+        x:Name="AuthShellContent"
         Title="Tài khoản"
         Icon="{StaticResource IconDashboard}"
         ContentTemplate="{DataTemplate pages:AuthPage}"

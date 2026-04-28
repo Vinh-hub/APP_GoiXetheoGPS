@@ -3,82 +3,49 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="APP_GoiXetheoGPS.Pages.AuthPage"
              Title="Tài khoản"
-             BackgroundColor="{AppThemeBinding Light=#F5F7FA, Dark={StaticResource DarkBackground}}">
-
+             BackgroundColor="White">
     <ScrollView>
-        <VerticalStackLayout Padding="20,16" Spacing="16">
-            <Label Text="Đăng nhập / Đăng ký"
-                   FontSize="24"
+        <VerticalStackLayout Padding="16,14,16,24" Spacing="12">
+            <Label Text="Tài khoản"
+                   FontSize="36"
                    FontAttributes="Bold"
-                   TextColor="{AppThemeBinding Light=#111827, Dark=White}" />
+                   TextColor="#111827" />
+            <Label Text="Quản lý đăng nhập, đăng ký và phiên của bạn."
+                   FontSize="13"
+                   TextColor="#6B7280" />
 
             <Border StrokeThickness="1"
-                    Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#404048}"
-                    BackgroundColor="{AppThemeBinding Light=White, Dark=#2A2A32}"
-                    Padding="14">
+                    Stroke="#DDE8E0"
+                    BackgroundColor="White"
+                    Padding="12">
                 <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="14" />
+                    <RoundRectangle CornerRadius="16" />
                 </Border.StrokeShape>
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Trạng thái JWT" FontAttributes="Bold" />
-                    <Label x:Name="JwtStatusLabel" Text="Chưa đăng nhập" />
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Phiên đăng nhập" FontAttributes="Bold" FontSize="15" />
+                    <Label x:Name="JwtStatusLabel" Text="Chưa đăng nhập" FontSize="13" />
+                    <Label x:Name="ExpiryStatusLabel"
+                           Text="Hạn dùng: Chưa có"
+                           FontSize="12"
+                           TextColor="#6B7280" />
                     <Label x:Name="SessionStatusLabel"
                            Text="Chưa xác thực phiên"
                            FontSize="12"
-                           Opacity="0.8" />
+                           TextColor="#6B7280" />
                     <Button x:Name="CheckSessionButton"
-                            Text="Kiểm tra phiên đăng nhập"
+                            Text="Kiểm tra phiên"
                             Clicked="CheckSessionButton_OnClicked"
+                            BackgroundColor="#EDF6FF"
+                            TextColor="#1F4E8C"
+                            CornerRadius="12" />
+                    <Button x:Name="LogoutButton"
+                            Text="Đăng xuất"
+                            Clicked="LogoutButton_OnClicked"
+                            BackgroundColor="#FFECEE"
+                            TextColor="#C62828"
                             CornerRadius="12" />
                 </VerticalStackLayout>
             </Border>
-
-            <Border StrokeThickness="1"
-                    Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#404048}"
-                    BackgroundColor="{AppThemeBinding Light=White, Dark=#2A2A32}"
-                    Padding="14">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="14" />
-                </Border.StrokeShape>
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Đăng nhập" FontAttributes="Bold" />
-                    <Entry x:Name="LoginEmailEntry" Placeholder="Email" Keyboard="Email" />
-                    <Entry x:Name="LoginPasswordEntry" Placeholder="Mật khẩu" IsPassword="True" />
-                    <Button x:Name="LoginButton"
-                            Text="Đăng nhập"
-                            Clicked="LoginButton_OnClicked"
-                            BackgroundColor="#2D7DFF"
-                            TextColor="White"
-                            CornerRadius="12" />
-                </VerticalStackLayout>
-            </Border>
-
-            <Border StrokeThickness="1"
-                    Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#404048}"
-                    BackgroundColor="{AppThemeBinding Light=White, Dark=#2A2A32}"
-                    Padding="14">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="14" />
-                </Border.StrokeShape>
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Đăng ký" FontAttributes="Bold" />
-                    <Entry x:Name="RegisterNameEntry" Placeholder="Họ tên" />
-                    <Entry x:Name="RegisterPhoneEntry" Placeholder="Số điện thoại" Keyboard="Telephone" />
-                    <Entry x:Name="RegisterEmailEntry" Placeholder="Email" Keyboard="Email" />
-                    <Entry x:Name="RegisterPasswordEntry" Placeholder="Mật khẩu" IsPassword="True" />
-                    <Button x:Name="RegisterButton"
-                            Text="Đăng ký"
-                            Clicked="RegisterButton_OnClicked"
-                            BackgroundColor="#10B981"
-                            TextColor="White"
-                            CornerRadius="12" />
-                </VerticalStackLayout>
-            </Border>
-
-            <Button x:Name="LogoutButton"
-                    Text="Đăng xuất"
-                    Clicked="LogoutButton_OnClicked"
-                    CornerRadius="12" />
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

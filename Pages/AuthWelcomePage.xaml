@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="APP_GoiXetheoGPS.Pages.AuthWelcomePage"
+             Title="Ride App"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="White">
+    <Grid Padding="24">
+        <VerticalStackLayout VerticalOptions="Center" Spacing="10">
+            <Label Text="Ride App"
+                   HorizontalTextAlignment="Center"
+                   FontSize="32"
+                   FontAttributes="Bold"
+                   TextColor="#2563EB" />
+            <Label Text="Bắt đầu hành trình của bạn"
+                   HorizontalTextAlignment="Center"
+                   FontSize="14"
+                   TextColor="#111827" />
+        </VerticalStackLayout>
+
+        <VerticalStackLayout VerticalOptions="End" Spacing="12">
+            <Button Text="Đăng nhập"
+                    Clicked="LoginButton_OnClicked"
+                    BackgroundColor="#3B82F6"
+                    TextColor="White"
+                    CornerRadius="14"
+                    HeightRequest="52" />
+            <Button Text="Đăng ký"
+                    Clicked="RegisterButton_OnClicked"
+                    BackgroundColor="White"
+                    TextColor="#2563EB"
+                    BorderColor="#3B82F6"
+                    BorderWidth="1.2"
+                    CornerRadius="14"
+                    HeightRequest="52" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

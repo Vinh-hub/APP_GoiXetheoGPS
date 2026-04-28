@@ -24,7 +24,9 @@ public class AdminUsersController : Controller
         if (!TryGetAdminContext(out var adminRegionId, out _))
             return Forbid();
 
-        var regionId = ResolveTargetRegionId(adminRegionId, latitude, province);
+        var regionId = (latitude.HasValue || !string.IsNullOrWhiteSpace(province))
+            ? ResolveTargetRegionId(adminRegionId, latitude, province)
+            : AdminRegionScopeHelper.GetScopedRegionId(Request, adminRegionId);
         var users = new List<AdminUserListItemViewModel>();
         await using var conn = _db.GetConnection(regionId == 1 ? 20 : 10);
         await conn.OpenAsync();
@@ -77,9 +79,10 @@ WHERE 1=1";
         ViewBag.Keyword = keyword ?? string.Empty;
         ViewBag.Role = role ?? string.Empty;
         ViewBag.Status = status ?? string.Empty;
-        ViewBag.Latitude = latitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
-        ViewBag.Province = province ?? string.Empty;
-        ViewBag.RegionScope = regionId == 1 ? "Miền Bắc" : "Miền Nam";
+        ViewBag.Latitude = latitude?.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ?? AdminRegionScopeHelper.GetScopeLatitudeText(Request);
+        ViewBag.Province = province ?? AdminRegionScopeHelper.GetScopeProvince(Request);
+        ViewBag.RegionScope = AdminRegionScopeHelper.GetScopeLabel(regionId);
 
         return View(users);
     }
@@ -87,9 +90,10 @@ WHERE 1=1";
     [HttpGet("create")]
     public IActionResult Create()
     {
-        if (!TryGetAdminContext(out var regionId, out _))
+        if (!TryGetAdminContext(out var adminRegionId, out _))
             return Forbid();
 
+        var regionId = AdminRegionScopeHelper.GetScopedRegionId(Request, adminRegionId);
         return View(new AdminUserUpsertViewModel { RegionId = regionId, IsActive = true, Role = "Customer" });
     }
 
@@ -100,7 +104,10 @@ WHERE 1=1";
         if (!TryGetAdminContext(out var adminRegionId, out _))
             return Forbid();
 
-        model.RegionId = ResolveTargetRegionId(adminRegionId, model.Latitude, model.Province);
+        model.RegionId = ResolveTargetRegionId(
+            AdminRegionScopeHelper.GetScopedRegionId(Request, adminRegionId),
+            model.Latitude,
+            model.Province);
         ValidateRoleBindings(model, isCreate: true);
 
         if (!ModelState.IsValid)
@@ -140,9 +147,10 @@ VALUES (@email, @password, @role, @customerId, @driverId, @name, @phone, @region
     [HttpGet("edit/{id:int}")]
     public async Task<IActionResult> Edit(int id)
     {
-        if (!TryGetAdminContext(out var regionId, out _))
+        if (!TryGetAdminContext(out var adminRegionId, out _))
             return Forbid();
 
+        var regionId = AdminRegionScopeHelper.GetScopedRegionId(Request, adminRegionId);
         await using var conn = _db.GetConnection(regionId == 1 ? 20 : 10);
         await conn.OpenAsync();
 
@@ -189,7 +197,10 @@ WHERE UserID = @id";
         if (id != model.UserId)
             return BadRequest();
 
-        model.RegionId = ResolveTargetRegionId(adminRegionId, model.Latitude, model.Province);
+        model.RegionId = ResolveTargetRegionId(
+            AdminRegionScopeHelper.GetScopedRegionId(Request, adminRegionId),
+            model.Latitude,
+            model.Province);
         ValidateRoleBindings(model, isCreate: false);
 
         if (!ModelState.IsValid)

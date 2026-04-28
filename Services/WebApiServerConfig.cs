@@ -9,7 +9,11 @@ public static class WebApiServerConfig
 
     public static string BaseUrl
     {
-        get => Preferences.Default.Get(ApiBaseUrlPreferenceKey, GetDefaultBaseUrl());
+        get
+        {
+            var savedValue = Preferences.Default.Get<string?>(ApiBaseUrlPreferenceKey, null);
+            return NormalizeBaseUrl(savedValue);
+        }
         set => Preferences.Default.Set(ApiBaseUrlPreferenceKey, NormalizeBaseUrl(value));
     }
 
@@ -21,11 +25,9 @@ public static class WebApiServerConfig
 
     static string GetDefaultBaseUrl()
     {
-        var host = DeviceInfo.Current.Platform == DevicePlatform.Android
-            ? "10.0.2.2"
-            : "127.0.0.1";
-
-        return $"http://{host}:5136";
+        return DeviceInfo.Current.Platform == DevicePlatform.Android
+            ? "http://10.0.2.2:5136"
+            : "http://localhost:5136";
     }
 
     static string NormalizeBaseUrl(string? value)
@@ -34,6 +36,23 @@ public static class WebApiServerConfig
             return GetDefaultBaseUrl();
 
         var trimmed = value.Trim();
-        return trimmed.EndsWith('/') ? trimmed.TrimEnd('/') : trimmed;
+        var normalized = trimmed.EndsWith('/') ? trimmed.TrimEnd('/') : trimmed;
+
+        if (DeviceInfo.Current.Platform != DevicePlatform.Android)
+            return normalized;
+
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri))
+            return normalized;
+
+        if (!string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase))
+            return normalized;
+
+        var builder = new UriBuilder(uri)
+        {
+            Host = "10.0.2.2"
+        };
+
+        return builder.Uri.GetLeftPart(UriPartial.Authority);
     }
 }
