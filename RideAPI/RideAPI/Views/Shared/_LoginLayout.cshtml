@@ -1,0 +1,16 @@
+@{
+    Layout = null;
+    var title = ViewData["Title"] as string ?? "Đăng nhập";
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@title · Ride Admin</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="login-body">
+    @RenderBody()
+</body>
+</html>

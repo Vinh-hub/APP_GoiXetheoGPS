@@ -22,6 +22,14 @@
                 <VerticalStackLayout Spacing="10">
                     <Label Text="Trạng thái JWT" FontAttributes="Bold" />
                     <Label x:Name="JwtStatusLabel" Text="Chưa đăng nhập" />
+                    <Label x:Name="SessionStatusLabel"
+                           Text="Chưa xác thực phiên"
+                           FontSize="12"
+                           Opacity="0.8" />
+                    <Button x:Name="CheckSessionButton"
+                            Text="Kiểm tra phiên đăng nhập"
+                            Clicked="CheckSessionButton_OnClicked"
+                            CornerRadius="12" />
                 </VerticalStackLayout>
             </Border>
 

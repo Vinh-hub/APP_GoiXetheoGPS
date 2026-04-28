@@ -1,0 +1,62 @@
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
+@{
+    Layout = null;
+    var title = ViewData["Title"] as string ?? "Quản trị";
+    var nav = (ViewData["Nav"] as string ?? string.Empty).ToLowerInvariant();
+    var userName = User.FindFirst("name")?.Value
+        ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
+        ?? "System Admin";
+    var userEmail = User.FindFirst("email")?.Value
+        ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+        ?? "admin@rideapi.local";
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@title · Ride Admin</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="admin-body">
+    <div class="admin-shell">
+        <aside class="admin-sidebar">
+            <div class="admin-brand-wrap">
+                <a class="admin-brand" href="/admin/dashboard">Ride Admin</a>
+            </div>
+            <nav class="admin-nav-links">
+                <a class="admin-nav-link @(nav == "dashboard" ? "active" : "")" href="/admin/dashboard">Bảng điều khiển</a>
+                <a class="admin-nav-link @(nav == "users" ? "active" : "")" href="/admin/users">Quản lý người dùng</a>
+                <a class="admin-nav-link @(nav == "trips" ? "active" : "")" href="/admin/trips">Chi tiết chuyến</a>
+                <a class="admin-nav-link @(nav == "nearby" ? "active" : "")" href="/admin/nearby-drivers">Tài xế lân cận</a>
+                @if (HostEnvironment.IsDevelopment())
+                {
+                    <a class="admin-nav-link @(nav == "swagger" ? "active" : "")" href="/swagger">Swagger API</a>
+                }
+            </nav>
+        </aside>
+
+        <main class="admin-main">
+            <header class="admin-topbar">
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <div class="top-user">
+                        <div class="top-user-meta">
+                            <div class="top-user-name">@userName</div>
+                            <div class="top-user-email">@userEmail</div>
+                        </div>
+                        <form asp-controller="Admin" asp-action="Logout" asp-area="" method="post" class="admin-logout-form">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="admin-logout-btn">⤿ Đăng xuất</button>
+                        </form>
+                    </div>
+                }
+            </header>
+            <section class="admin-content">
+                @RenderBody()
+            </section>
+        </main>
+    </div>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

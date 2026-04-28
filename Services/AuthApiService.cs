@@ -20,7 +20,7 @@ public sealed class AuthApiService
             cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(response?.Token))
-            _session.AccessToken = response.Token;
+            _session.SaveLogin(response);
 
         return response;
     }
@@ -34,12 +34,55 @@ public sealed class AuthApiService
             cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(response?.Token))
-            _session.AccessToken = response.Token;
+            _session.SaveLogin(response);
 
         return response;
     }
 
-    public void Logout() => _session.Clear();
+    public async Task<SessionResponse?> ValidateSessionAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_session.IsLoggedIn)
+        {
+            _session.Clear();
+            return null;
+        }
+
+        try
+        {
+            var session = await _api.GetAsync<SessionResponse>("/api/auth/session", requiresAuth: true, cancellationToken);
+            if (session is null || !session.IsAuthenticated)
+            {
+                _session.Clear();
+                return null;
+            }
+
+            _session.UserId = session.UserId;
+            _session.Role = session.Role ?? string.Empty;
+            _session.Name = session.Name ?? string.Empty;
+            _session.Email = session.Email ?? string.Empty;
+            _session.RegionId = session.RegionId;
+            return session;
+        }
+        catch
+        {
+            _session.Clear();
+            return null;
+        }
+    }
+
+    public async Task LogoutAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _api.PostAsync<object>("/api/auth/logout", new { }, requiresAuth: true, cancellationToken);
+        }
+        catch
+        {
+            // Ignore API logout errors and clear local session anyway.
+        }
+
+        _session.Clear();
+    }
 
     public sealed record LoginRequest(string Email, string Password);
 
@@ -57,5 +100,18 @@ public sealed class AuthApiService
         public string? Phone { get; set; }
         public string? Email { get; set; }
         public int RegionId { get; set; }
+    }
+
+    public sealed class SessionResponse
+    {
+        public bool IsAuthenticated { get; set; }
+        public int UserId { get; set; }
+        public string? Role { get; set; }
+        public int? CustomerId { get; set; }
+        public int? DriverId { get; set; }
+        public string? Name { get; set; }
+        public string? Email { get; set; }
+        public int RegionId { get; set; }
+        public DateTime? ExpiresAtUtc { get; set; }
     }
 }

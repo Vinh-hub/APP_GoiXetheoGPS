@@ -11,7 +11,6 @@ namespace RideAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [AllowAnonymous]
     public class AuthController : ControllerBase
     {
         private readonly DatabaseService _db;
@@ -26,6 +25,7 @@ namespace RideAPI.Controllers
         }
 
         // POST: api/auth/login
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
@@ -95,6 +95,7 @@ namespace RideAPI.Controllers
         }
 
         // POST: api/auth/register
+        [AllowAnonymous]
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
@@ -168,6 +169,48 @@ namespace RideAPI.Controllers
             }
         }
 
+        [Authorize]
+        [HttpGet("session")]
+        public IActionResult GetSession()
+        {
+            var userIdClaim = User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out var userId))
+                return Unauthorized(new { message = "Token không hợp lệ." });
+
+            var role = User.FindFirst("role")?.Value ?? User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+            var name = User.FindFirst("name")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? string.Empty;
+            var email = User.FindFirst("email")?.Value ?? User.FindFirst(ClaimTypes.Email)?.Value ?? string.Empty;
+
+            _ = int.TryParse(User.FindFirst("regionId")?.Value, out var regionId);
+            int? customerId = int.TryParse(User.FindFirst("customerId")?.Value, out var cid) ? cid : null;
+            int? driverId = int.TryParse(User.FindFirst("driverId")?.Value, out var did) ? did : null;
+
+            DateTime? expiresAtUtc = null;
+            var expRaw = User.FindFirst(JwtRegisteredClaimNames.Exp)?.Value ?? User.FindFirst("exp")?.Value;
+            if (long.TryParse(expRaw, out var expUnix))
+                expiresAtUtc = DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime;
+
+            return Ok(new
+            {
+                isAuthenticated = true,
+                userId,
+                role,
+                customerId,
+                driverId,
+                name,
+                email,
+                regionId,
+                expiresAtUtc
+            });
+        }
+
+        [Authorize]
+        [HttpPost("logout")]
+        public IActionResult Logout()
+        {
+            return Ok(new { message = "Đăng xuất thành công." });
+        }
+
         private string GenerateJwtToken(int userId, string name, string email, int regionId, string role, int? customerId, int? driverId)
         {
             var jwtKey = _config["Jwt:Key"] ?? "YourSuperSecretKeyForJwtAuthenticationWhichNeedsToBeLongEnough";
@@ -184,8 +227,8 @@ namespace RideAPI.Controllers
                 new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 
-            if (customerId.HasValue) claims.Add(new Claim("customerId", customerId.ToString()));
-            if (driverId.HasValue) claims.Add(new Claim("driverId", driverId.ToString()));
+            if (customerId.HasValue) claims.Add(new Claim("customerId", customerId.Value.ToString()));
+            if (driverId.HasValue) claims.Add(new Claim("driverId", driverId.Value.ToString()));
 
             var token = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"] ?? "RideAPI",

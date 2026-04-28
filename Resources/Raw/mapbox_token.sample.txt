@@ -1,0 +1,3 @@
+## Copy this file to mapbox_token.txt and paste your Mapbox public token (pk...)
+## Keep only the token string in mapbox_token.txt (no comments).
+pk.your_public_mapbox_token_here

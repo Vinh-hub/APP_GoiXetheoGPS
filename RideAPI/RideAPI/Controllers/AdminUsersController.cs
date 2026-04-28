@@ -19,11 +19,12 @@ public class AdminUsersController : Controller
     }
 
     [HttpGet("")]
-    public async Task<IActionResult> Index(string? keyword, string? role, string? status)
+    public async Task<IActionResult> Index(string? keyword, string? role, string? status, double? latitude, string? province)
     {
-        if (!TryGetAdminContext(out var regionId, out _))
+        if (!TryGetAdminContext(out var adminRegionId, out _))
             return Forbid();
 
+        var regionId = ResolveTargetRegionId(adminRegionId, latitude, province);
         var users = new List<AdminUserListItemViewModel>();
         await using var conn = _db.GetConnection(regionId == 1 ? 20 : 10);
         await conn.OpenAsync();
@@ -76,6 +77,9 @@ WHERE 1=1";
         ViewBag.Keyword = keyword ?? string.Empty;
         ViewBag.Role = role ?? string.Empty;
         ViewBag.Status = status ?? string.Empty;
+        ViewBag.Latitude = latitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        ViewBag.Province = province ?? string.Empty;
+        ViewBag.RegionScope = regionId == 1 ? "Miền Bắc" : "Miền Nam";
 
         return View(users);
     }
@@ -93,16 +97,16 @@ WHERE 1=1";
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(AdminUserUpsertViewModel model)
     {
-        if (!TryGetAdminContext(out var regionId, out _))
+        if (!TryGetAdminContext(out var adminRegionId, out _))
             return Forbid();
 
-        model.RegionId = regionId;
+        model.RegionId = ResolveTargetRegionId(adminRegionId, model.Latitude, model.Province);
         ValidateRoleBindings(model, isCreate: true);
 
         if (!ModelState.IsValid)
             return View(model);
 
-        await using var conn = _db.GetConnection(regionId == 1 ? 20 : 10);
+        await using var conn = _db.GetConnection(model.RegionId == 1 ? 20 : 10);
         await conn.OpenAsync();
 
         const string sql = @"
@@ -167,7 +171,9 @@ WHERE UserID = @id";
             Name = reader.GetString(reader.GetOrdinal("Name")),
             Phone = reader.GetString(reader.GetOrdinal("Phone")),
             IsActive = reader.GetBoolean(reader.GetOrdinal("IsActive")),
-            RegionId = reader.GetInt32(reader.GetOrdinal("RegionID"))
+            RegionId = reader.GetInt32(reader.GetOrdinal("RegionID")),
+            Latitude = reader.GetInt32(reader.GetOrdinal("RegionID")) == 1 ? 21.0285 : 10.7769,
+            Longitude = reader.GetInt32(reader.GetOrdinal("RegionID")) == 1 ? 105.8542 : 106.7009
         };
 
         return View(model);
@@ -177,19 +183,19 @@ WHERE UserID = @id";
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Edit(int id, AdminUserUpsertViewModel model)
     {
-        if (!TryGetAdminContext(out var regionId, out _))
+        if (!TryGetAdminContext(out var adminRegionId, out _))
             return Forbid();
 
         if (id != model.UserId)
             return BadRequest();
 
-        model.RegionId = regionId;
+        model.RegionId = ResolveTargetRegionId(adminRegionId, model.Latitude, model.Province);
         ValidateRoleBindings(model, isCreate: false);
 
         if (!ModelState.IsValid)
             return View(model);
 
-        await using var conn = _db.GetConnection(regionId == 1 ? 20 : 10);
+        await using var conn = _db.GetConnection(model.RegionId == 1 ? 20 : 10);
         await conn.OpenAsync();
 
         const string sql = @"
@@ -323,5 +329,13 @@ WHERE UserID = @id";
         model.CustomerId = null;
         if (!model.DriverId.HasValue)
             ModelState.AddModelError(nameof(model.DriverId), "DriverId là bắt buộc cho role Driver.");
+    }
+
+    private static int ResolveTargetRegionId(int fallbackRegionId, double? latitude, string? province)
+    {
+        if (latitude.HasValue || !string.IsNullOrWhiteSpace(province))
+            return LocationRoutingService.ResolveRegionId(latitude, province);
+
+        return fallbackRegionId is 1 or 2 ? fallbackRegionId : 2;
     }
 }

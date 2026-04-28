@@ -46,7 +46,7 @@ public sealed class ApiClient
         await AddHeadersAsync(request, requiresAuth, cancellationToken);
 
         using var response = await _http.SendAsync(request, cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken, requiresAuth);
 
         if (typeof(T) == typeof(object) || response.Content is null)
             return default;
@@ -77,12 +77,21 @@ public sealed class ApiClient
         }
     }
 
-    static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken, bool requiresAuth)
     {
         if (response.IsSuccessStatusCode)
             return;
 
         var apiMessage = await TryReadErrorMessageAsync(response, cancellationToken);
+        if (requiresAuth && response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            _session.Clear();
+            throw new ApiRequestException(HttpStatusCode.Unauthorized,
+                string.IsNullOrWhiteSpace(apiMessage)
+                    ? "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+                    : apiMessage);
+        }
+
         if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
             throw new ApiReadOnlyException(apiMessage);
 

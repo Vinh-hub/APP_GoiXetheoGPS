@@ -1,61 +1,83 @@
 @model RideAPI.Models.ViewModels.AdminDashboardViewModel
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @{
-    ViewData["Title"] = "Admin Dashboard";
+    ViewData["Title"] = "Bảng điều khiển";
+    ViewData["Nav"] = "dashboard";
+    var regionText = Model.RegionId switch
+    {
+        "1" => "Miền Bắc",
+        "2" => "Miền Nam",
+        _ => string.IsNullOrWhiteSpace(Model.RegionId) ? "Toàn quốc" : Model.RegionId
+    };
 }
 
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"]</title>
-    <style>
-        body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: #f4f6fb; color: #1f2937; }
-        .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
-        .header { background: #111827; color: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-        .card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
-        .label { color: #6b7280; font-size: 13px; margin-bottom: 8px; }
-        .value { font-size: 18px; font-weight: 700; }
-        .links { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
-        .links a { text-decoration: none; background: #2563eb; color: #fff; padding: 10px 14px; border-radius: 8px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1 style="margin:0 0 8px 0;">Admin Dashboard</h1>
-            <div>Xin chào, @Model.Name</div>
-            <form asp-action="Logout" asp-controller="Admin" method="post" style="margin-top:10px;">
-                @Html.AntiForgeryToken()
-                <button type="submit" style="border:0;background:#ef4444;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;">Đăng xuất</button>
-            </form>
-        </div>
+<div class="welcome-box panel">
+    <h1 class="welcome-title">Chào mừng trở lại!</h1>
+    <div class="welcome-sub">Quản lý hệ thống Ride Admin của bạn</div>
+</div>
 
-        <div class="grid">
-            <div class="card">
-                <div class="label">Email</div>
-                <div class="value">@Model.Email</div>
-            </div>
-            <div class="card">
-                <div class="label">Role</div>
-                <div class="value">@Model.Role</div>
-            </div>
-            <div class="card">
-                <div class="label">Region</div>
-                <div class="value">@(string.IsNullOrWhiteSpace(Model.RegionId) ? "N/A" : Model.RegionId)</div>
-            </div>
-            <div class="card">
-                <div class="label">Generated (UTC)</div>
-                <div class="value">@Model.GeneratedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</div>
-            </div>
-        </div>
-
-        <div class="links">
-            <a href="/admin/users">Quản lý người dùng</a>
-            <a href="/admin/trips">Trips</a>
-            <a href="/admin/nearby-drivers">Nearby Drivers</a>
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-icon">✉</div>
+        <div>
+            <div class="kpi-label">Email</div>
+            <div class="kpi-value">@Model.Email</div>
         </div>
     </div>
-</body>
-</html>
+    <div class="kpi-card">
+        <div class="kpi-icon">🛡</div>
+        <div>
+            <div class="kpi-label">Vai trò</div>
+            <div class="kpi-value">@Model.Role</div>
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-icon" aria-hidden="true">▣</div>
+        <div>
+            <div class="kpi-label">Vùng</div>
+            <div class="kpi-value">@regionText</div>
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-icon">🕒</div>
+        <div>
+            <div class="kpi-label">Thời gian</div>
+            <div class="kpi-value">08:30 - 17:30</div>
+        </div>
+    </div>
+</div>
+
+<h2 class="section-title">Thao tác nhanh</h2>
+<div class="quick-grid">
+    <a class="quick-card" href="/admin/users">
+        <div class="quick-icon">👥</div>
+        <h3 class="quick-title">Quản lý người dùng</h3>
+        <div class="quick-desc">Xem và quản lý danh sách người dùng</div>
+    </a>
+    <a class="quick-card" href="/admin/trips">
+        <div class="quick-icon">↭</div>
+        <h3 class="quick-title">Chi tiết chuyến đi</h3>
+        <div class="quick-desc">Tra cứu thông tin chuyến xe</div>
+    </a>
+    <a class="quick-card" href="/admin/nearby-drivers">
+        <div class="quick-icon">🚕</div>
+        <h3 class="quick-title">Tài xế lân cận</h3>
+        <div class="quick-desc">Tìm tài xế theo vị trí</div>
+    </a>
+    @if (HostEnvironment.IsDevelopment())
+    {
+        <a class="quick-card" href="/swagger">
+            <div class="quick-icon">📄</div>
+            <h3 class="quick-title">Swagger API</h3>
+            <div class="quick-desc">Tài liệu API và kiểm thử</div>
+        </a>
+    }
+    else
+    {
+        <a class="quick-card" href="/admin/dashboard">
+            <div class="quick-icon">🧩</div>
+            <h3 class="quick-title">Trạng thái hệ thống</h3>
+            <div class="quick-desc">Cập nhật lúc @Model.GeneratedAtUtc.ToString("HH:mm:ss") UTC</div>
+        </a>
+    }
+</div>
