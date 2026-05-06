@@ -13,13 +13,34 @@ public partial class AuthPage : ContentPage
         InitializeComponent();
         _authApiService = authApiService;
         _sessionService = sessionService;
+
+        // Subscribe to login state changes
+        _sessionService.LoginStateChanged += OnLoginStateChanged;
+    }
+
+    private void OnLoginStateChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateJwtStatusLabel();
+        });
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _sessionService.LoginStateChanged -= OnLoginStateChanged;
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        UpdateJwtStatusLabel();
-        _ = RefreshSessionSilentlyAsync();
+        // Always refresh UI when page appears
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateJwtStatusLabel();
+            _ = RefreshSessionSilentlyAsync();
+        });
     }
 
     async void CheckSessionButton_OnClicked(object? sender, EventArgs e)
@@ -78,14 +99,36 @@ public partial class AuthPage : ContentPage
     {
         try
         {
+            // First check if token is expired before calling API
+            var token = _sessionService.AccessToken;
+            var expiresUtc = _sessionService.GetTokenExpiryUtc();
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                SessionStatusLabel.Text = "Chưa đăng nhập.";
+                if (showFeedback)
+                    await this.DisplayAlertAsync("Phiên đăng nhập", "Bạn chưa đăng nhập.", "OK");
+                return;
+            }
+
+            if (expiresUtc.HasValue && expiresUtc.Value <= DateTimeOffset.UtcNow)
+            {
+                _sessionService.Clear();
+                UpdateJwtStatusLabel();
+                SessionStatusLabel.Text = "Phiên đã hết hạn.";
+                if (showFeedback)
+                    await this.DisplayAlertAsync("Phiên đăng nhập", "Phiên đã hết hạn. Vui lòng đăng nhập lại.", "OK");
+                return;
+            }
+
             var session = await _authApiService.ValidateSessionAsync();
             if (session is null)
             {
                 _sessionService.Clear();
                 UpdateJwtStatusLabel();
-                SessionStatusLabel.Text = "Phiên không hợp lệ hoặc đã hết hạn.";
+                SessionStatusLabel.Text = "Phiên không hợp lệ.";
                 if (showFeedback)
-                    await this.DisplayAlertAsync("Phiên đăng nhập", "Phiên không hợp lệ hoặc đã hết hạn.", "OK");
+                    await this.DisplayAlertAsync("Phiên đăng nhập", "Phiên không hợp lệ. Vui lòng đăng nhập lại.", "OK");
                 return;
             }
 

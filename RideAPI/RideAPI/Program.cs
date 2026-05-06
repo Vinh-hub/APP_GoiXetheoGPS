@@ -129,7 +129,18 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-await EnsureAdminAccountAsync(app.Services, builder.Configuration);
+try
+{
+    await EnsureAdminAccountAsync(app.Services, builder.Configuration);
+}
+catch (InvalidOperationException ex) when (ex.Message.Contains("DB_NODES_DOWN") || ex.Message.Contains("DOWN_CANNOT_WRITE"))
+{
+    Console.WriteLine($"⚠️  Warning: Could not seed admin accounts - {ex.Message}. Database may not be available. Application will continue without admin seed data.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"⚠️  Warning: Unexpected error during admin account seeding: {ex.Message}");
+}
 
 if (app.Environment.IsDevelopment())
 {

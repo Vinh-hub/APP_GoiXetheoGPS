@@ -202,11 +202,12 @@ LIMIT 1";
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
+        var expiresAt = DateTime.UtcNow.AddHours(24);
         var token = new JwtSecurityToken(
             issuer: _config["Jwt:Issuer"] ?? "RideAPI",
             audience: _config["Jwt:Audience"] ?? "RideApp",
             claims: claims,
-            expires: DateTime.UtcNow.AddDays(1),
+            expires: expiresAt,
             signingCredentials: creds
         );
 

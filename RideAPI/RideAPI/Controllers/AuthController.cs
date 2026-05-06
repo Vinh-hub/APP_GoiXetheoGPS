@@ -230,11 +230,12 @@ namespace RideAPI.Controllers
             if (customerId.HasValue) claims.Add(new Claim("customerId", customerId.Value.ToString()));
             if (driverId.HasValue) claims.Add(new Claim("driverId", driverId.Value.ToString()));
 
+            var expiresAt = DateTime.UtcNow.AddHours(24);
             var token = new JwtSecurityToken(
                 issuer: _config["Jwt:Issuer"] ?? "RideAPI",
                 audience: _config["Jwt:Audience"] ?? "RideApp",
                 claims: claims,
-                expires: DateTime.UtcNow.AddDays(1),
+                expires: expiresAt,
                 signingCredentials: creds);
 
             return new JwtSecurityTokenHandler().WriteToken(token);

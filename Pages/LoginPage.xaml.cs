@@ -39,9 +39,15 @@ public partial class LoginPage : ContentPage
             }
 
             var result = await _authApiService.LoginAsync(email, password);
+            if (result is null || string.IsNullOrWhiteSpace(result.Token))
+            {
+                await this.DisplayAlertAsync("Đăng nhập", "Email hoặc mật khẩu không chính xác.", "OK");
+                return;
+            }
+
             await this.DisplayAlertAsync(
                 "Đăng nhập thành công",
-                result?.Message ?? "Đăng nhập thành công.",
+                result.Message ?? "Đăng nhập thành công.",
                 "OK");
 
             await Shell.Current.GoToAsync("//home");

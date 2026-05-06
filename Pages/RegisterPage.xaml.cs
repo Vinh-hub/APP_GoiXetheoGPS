@@ -44,9 +44,15 @@ public partial class RegisterPage : ContentPage
             }
 
             var result = await _authApiService.RegisterAsync(request);
+            if (result is null || string.IsNullOrWhiteSpace(result.Token))
+            {
+                await this.DisplayAlertAsync("Đăng ký", "Đăng ký thất bại. Vui lòng thử lại.", "OK");
+                return;
+            }
+
             await this.DisplayAlertAsync(
                 "Đăng ký thành công",
-                result?.Message ?? "Tạo tài khoản thành công.",
+                result.Message ?? "Tạo tài khoản thành công.",
                 "OK");
 
             await Shell.Current.GoToAsync("//home");

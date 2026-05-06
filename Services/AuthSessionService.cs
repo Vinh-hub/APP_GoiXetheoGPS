@@ -13,6 +13,8 @@ public sealed class AuthSessionService
     const string NameKey = "auth_name";
     const string RegionIdKey = "auth_region_id";
 
+    public event EventHandler? LoginStateChanged;
+
     public string? AccessToken
     {
         get => Preferences.Default.Get<string?>(AccessTokenKey, null);
@@ -57,6 +59,22 @@ public sealed class AuthSessionService
 
     public bool IsLoggedIn => !string.IsNullOrWhiteSpace(AccessToken) && !IsTokenExpired();
 
+    private bool IsTokenExpiredSoon()
+    {
+        var expires = GetTokenExpiryUtc();
+        if (!expires.HasValue)
+            return false;
+
+        // Token considered expired soon if less than 1 minute remaining
+        return expires.Value <= DateTimeOffset.UtcNow.AddMinutes(1);
+    }
+
+    public void RefreshLoginFromStorage()
+    {
+        // Force refresh of login status from storage
+        // This is called when navigating to AuthPage
+    }
+
     public void SaveLogin(AuthApiService.AuthResponse response)
     {
         if (response is null || string.IsNullOrWhiteSpace(response.Token))
@@ -68,6 +86,9 @@ public sealed class AuthSessionService
         Email = response.Email ?? string.Empty;
         Name = response.Name ?? string.Empty;
         RegionId = response.RegionId;
+
+        // Fire event when login changes
+        LoginStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public DateTimeOffset? GetTokenExpiryUtc()
@@ -102,6 +123,9 @@ public sealed class AuthSessionService
         Preferences.Default.Remove(EmailKey);
         Preferences.Default.Remove(NameKey);
         Preferences.Default.Remove(RegionIdKey);
+
+        // Fire event when logout happens
+        LoginStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     static JsonDocument? ReadJwtPayload(string? jwt)
