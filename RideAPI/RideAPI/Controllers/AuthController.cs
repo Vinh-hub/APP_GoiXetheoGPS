@@ -1,9 +1,9 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+﻿using System.ComponentModel.DataAnnotations;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using RideAPI.Services;
 
@@ -16,12 +16,24 @@ namespace RideAPI.Controllers
         private readonly DatabaseService _db;
         private readonly IConfiguration _config;
         private readonly IWebHostEnvironment _env;
+        private readonly PasswordHasherService _passwords;
+        private readonly JwtTokenService _jwt;
+        private readonly RefreshTokenService _refreshTokens;
 
-        public AuthController(DatabaseService db, IConfiguration config, IWebHostEnvironment env)
+        public AuthController(
+            DatabaseService db,
+            IConfiguration config,
+            IWebHostEnvironment env,
+            PasswordHasherService passwords,
+            JwtTokenService jwt,
+            RefreshTokenService refreshTokens)
         {
             _db = db;
             _config = config;
             _env = env;
+            _passwords = passwords;
+            _jwt = jwt;
+            _refreshTokens = refreshTokens;
         }
 
         // POST: api/auth/login
@@ -32,7 +44,7 @@ namespace RideAPI.Controllers
             var email = request.Email?.Trim() ?? string.Empty;
             var password = request.Password ?? string.Empty;
 
-            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            if (!IsValidEmail(email) || string.IsNullOrWhiteSpace(password))
                 return BadRequest(new { message = "Email và mật khẩu không được để trống." });
 
             var region = LocationRoutingService.ResolveRegion(request.Latitude, request.Province);
@@ -44,19 +56,25 @@ namespace RideAPI.Controllers
                     SELECT u.UserID, u.Email, u.Role, u.CustomerID, u.DriverID,
                            COALESCE(c.FullName, d.Name, u.Name) AS DisplayName,
                            COALESCE(c.Phone, d.Phone, u.Phone) AS DisplayPhone,
-                           u.IsActive
+                           u.Password,
+                           u.IsActive,
+                           COALESCE(u.RegionID, @regionId) AS RegionID
                     FROM Users u
                     LEFT JOIN Customers c ON c.CustomerID = u.CustomerID
                     LEFT JOIN Drivers d ON d.DriverID = u.DriverID
-                    WHERE u.Email = @email AND u.Password = @pwd
+                    WHERE LOWER(u.Email) = LOWER(@email)
                     LIMIT 1";
 
                 await using var cmd = new NpgsqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@email", email);
-                cmd.Parameters.AddWithValue("@pwd", password);
+                cmd.Parameters.AddWithValue("@regionId", region == "NORTH" ? 1 : 2);
                 await using var reader = await cmd.ExecuteReaderAsync();
 
                 if (!await reader.ReadAsync())
+                    return Unauthorized(new { message = "Sai email hoặc mật khẩu." });
+
+                var storedPassword = reader.GetString(reader.GetOrdinal("Password"));
+                if (!_passwords.VerifyPassword(password, storedPassword))
                     return Unauthorized(new { message = "Sai email hoặc mật khẩu." });
 
                 if (!reader.IsDBNull(reader.GetOrdinal("IsActive")) && !reader.GetBoolean(reader.GetOrdinal("IsActive")))
@@ -69,14 +87,19 @@ namespace RideAPI.Controllers
                 var displayPhone = reader.IsDBNull(reader.GetOrdinal("DisplayPhone")) ? string.Empty : reader.GetString(reader.GetOrdinal("DisplayPhone"));
                 int? customerId = reader.IsDBNull(reader.GetOrdinal("CustomerID")) ? null : reader.GetInt32(reader.GetOrdinal("CustomerID"));
                 int? driverId = reader.IsDBNull(reader.GetOrdinal("DriverID")) ? null : reader.GetInt32(reader.GetOrdinal("DriverID"));
-                int regionId = region == "NORTH" ? 1 : 2;
+                int regionId = reader.GetInt32(reader.GetOrdinal("RegionID"));
 
-                var token = GenerateJwtToken(userId, displayName, accountEmail, regionId, role, customerId, driverId);
+                var token = _jwt.GenerateAccessToken(userId, displayName, accountEmail, regionId, role, customerId, driverId);
+                var refreshToken = await _refreshTokens.CreateAsync(region, userId, regionId, role, token.JwtId);
 
                 return Ok(new
                 {
                     message = "Đăng nhập thành công.",
-                    token,
+                    token = token.Token,
+                    accessToken = token.Token,
+                    expiresAtUtc = token.ExpiresAtUtc,
+                    refreshToken = refreshToken.Token,
+                    refreshTokenExpiresAtUtc = refreshToken.ExpiresAtUtc,
                     userId,
                     role,
                     customerId,
@@ -104,8 +127,9 @@ namespace RideAPI.Controllers
             var password = request.Password ?? string.Empty;
             var phone = request.Phone?.Trim() ?? string.Empty;
 
-            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-                return BadRequest(new { message = "Vui lòng điền đầy đủ thông tin." });
+            var validationError = ValidateRegister(name, email, phone, password);
+            if (validationError is not null)
+                return BadRequest(new { message = validationError });
 
             var region = LocationRoutingService.ResolveRegion(request.Latitude, request.Province);
             int regionId = region == "NORTH" ? 1 : 2;
@@ -114,12 +138,25 @@ namespace RideAPI.Controllers
             {
                 using var conn = await _db.GetConnectionAsync(region, isWrite: true);
 
-                const string checkSql = "SELECT COUNT(*) FROM Users WHERE Email = @email";
+                const string checkSql = @"
+SELECT
+    EXISTS (SELECT 1 FROM Users WHERE LOWER(Email) = LOWER(@email)) AS EmailExists,
+    EXISTS (SELECT 1 FROM Users WHERE Phone = @phone AND BTRIM(COALESCE(Phone, '')) <> '') AS UserPhoneExists,
+    EXISTS (SELECT 1 FROM Customers WHERE Phone = @phone AND BTRIM(COALESCE(Phone, '')) <> '') AS CustomerPhoneExists";
                 await using var checkCmd = new NpgsqlCommand(checkSql, conn);
                 checkCmd.Parameters.AddWithValue("@email", email);
-                var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
-                if (count > 0)
-                    return Conflict(new { message = "Email đã được đăng ký." });
+                checkCmd.Parameters.AddWithValue("@phone", phone);
+                await using (var checkReader = await checkCmd.ExecuteReaderAsync())
+                {
+                    if (await checkReader.ReadAsync())
+                    {
+                        if (checkReader.GetBoolean(checkReader.GetOrdinal("EmailExists")))
+                            return Conflict(new { message = "Email đã được đăng ký." });
+                        if (checkReader.GetBoolean(checkReader.GetOrdinal("UserPhoneExists"))
+                            || checkReader.GetBoolean(checkReader.GetOrdinal("CustomerPhoneExists")))
+                            return Conflict(new { message = "Số điện thoại đã được đăng ký." });
+                    }
+                }
 
                 await using var tx = await conn.BeginTransactionAsync();
 
@@ -144,12 +181,17 @@ namespace RideAPI.Controllers
 
                 await tx.CommitAsync();
 
-                var token = GenerateJwtToken(newUserId, name, email, regionId, "Customer", newCustomerId, null);
+                var token = _jwt.GenerateAccessToken(newUserId, name, email, regionId, "Customer", newCustomerId, null);
+                var refreshToken = await _refreshTokens.CreateAsync(region, newUserId, regionId, "Customer", token.JwtId);
 
                 return Ok(new
                 {
                     message = "Đăng ký thành công.",
-                    token,
+                    token = token.Token,
+                    accessToken = token.Token,
+                    expiresAtUtc = token.ExpiresAtUtc,
+                    refreshToken = refreshToken.Token,
+                    refreshTokenExpiresAtUtc = refreshToken.ExpiresAtUtc,
                     userId = newUserId,
                     role = "Customer",
                     customerId = newCustomerId,
@@ -163,10 +205,58 @@ namespace RideAPI.Controllers
             catch (NpgsqlException ex)
             {
                 if (string.Equals(ex.SqlState, PostgresErrorCodes.UniqueViolation, StringComparison.Ordinal))
-                    return Conflict(new { message = "Email đã được đăng ký." });
+                    return Conflict(new { message = "Email hoặc số điện thoại đã được đăng ký." });
 
                 return StatusCode(503, new { message = "Đăng ký thất bại.", detail = _env.IsDevelopment() ? ex.Message : null });
             }
+        }
+
+        [AllowAnonymous]
+        [HttpPost("refresh")]
+        public async Task<IActionResult> Refresh([FromBody] RefreshRequest request)
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.RefreshToken))
+                return BadRequest(new { message = "Thiếu refresh token." });
+
+            var preferredRegion = LocationRoutingService.ResolveRegion(request.Latitude, request.Province);
+            var found = await FindRefreshTokenAsync(preferredRegion, request.RefreshToken);
+            if (found is null)
+                return Unauthorized(new { message = "Refresh token không hợp lệ hoặc đã hết hạn." });
+
+            var (region, stored) = found.Value;
+            var user = await ReadUserByIdAsync(region, stored.UserId);
+            if (user is null || !user.Value.IsActive)
+                return Unauthorized(new { message = "Tài khoản không hợp lệ hoặc đã bị khóa." });
+
+            var token = _jwt.GenerateAccessToken(
+                user.Value.UserId,
+                user.Value.Name,
+                user.Value.Email,
+                user.Value.RegionId,
+                user.Value.Role,
+                user.Value.CustomerId,
+                user.Value.DriverId);
+            var refreshToken = await _refreshTokens.CreateAsync(region, user.Value.UserId, user.Value.RegionId, user.Value.Role, token.JwtId);
+            await _refreshTokens.RevokeAsync(region, request.RefreshToken, refreshToken.Token);
+
+            return Ok(new
+            {
+                message = "Làm mới phiên thành công.",
+                token = token.Token,
+                accessToken = token.Token,
+                expiresAtUtc = token.ExpiresAtUtc,
+                refreshToken = refreshToken.Token,
+                refreshTokenExpiresAtUtc = refreshToken.ExpiresAtUtc,
+                userId = user.Value.UserId,
+                role = user.Value.Role,
+                customerId = user.Value.CustomerId,
+                driverId = user.Value.DriverId,
+                name = user.Value.Name,
+                phone = user.Value.Phone,
+                email = user.Value.Email,
+                regionId = user.Value.RegionId,
+                region
+            });
         }
 
         [Authorize]
@@ -206,40 +296,90 @@ namespace RideAPI.Controllers
 
         [Authorize]
         [HttpPost("logout")]
-        public IActionResult Logout()
+        public async Task<IActionResult> Logout([FromBody] LogoutRequest? request = null)
         {
+            var regionId = int.TryParse(User.FindFirst("regionId")?.Value, out var rid) ? rid : 2;
+            var region = regionId == 1 ? "NORTH" : "SOUTH";
+            var userId = int.TryParse(User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var uid)
+                ? uid
+                : (int?)null;
+            var jwtId = User.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+            var expRaw = User.FindFirst(JwtRegisteredClaimNames.Exp)?.Value ?? User.FindFirst("exp")?.Value;
+            var expiresAtUtc = long.TryParse(expRaw, out var expUnix)
+                ? DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime
+                : DateTime.UtcNow.AddMinutes(5);
+
+            if (!string.IsNullOrWhiteSpace(request?.RefreshToken))
+                await _refreshTokens.RevokeAsync(region, request.RefreshToken);
+            await _refreshTokens.RevokeJwtAsync(region, jwtId, userId, expiresAtUtc);
             return Ok(new { message = "Đăng xuất thành công." });
         }
 
-        private string GenerateJwtToken(int userId, string name, string email, int regionId, string role, int? customerId, int? driverId)
+        private async Task<(string Region, StoredRefreshToken Token)?> FindRefreshTokenAsync(string preferredRegion, string refreshToken)
         {
-            var jwtKey = _config["Jwt:Key"] ?? "YourSuperSecretKeyForJwtAuthenticationWhichNeedsToBeLongEnough";
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-            var claims = new List<Claim>
+            foreach (var region in new[] { preferredRegion, preferredRegion == "NORTH" ? "SOUTH" : "NORTH" }.Distinct())
             {
-                new(JwtRegisteredClaimNames.Sub, userId.ToString()),
-                new(JwtRegisteredClaimNames.Name, name ?? string.Empty),
-                new(JwtRegisteredClaimNames.Email, email ?? string.Empty),
-                new("regionId", regionId.ToString()),
-                new("role", role ?? string.Empty),
-                new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            };
+                var stored = await _refreshTokens.FindValidAsync(region, refreshToken);
+                if (stored is not null)
+                    return (region, stored);
+            }
 
-            if (customerId.HasValue) claims.Add(new Claim("customerId", customerId.Value.ToString()));
-            if (driverId.HasValue) claims.Add(new Claim("driverId", driverId.Value.ToString()));
-
-            var expiresAt = DateTime.UtcNow.AddHours(24);
-            var token = new JwtSecurityToken(
-                issuer: _config["Jwt:Issuer"] ?? "RideAPI",
-                audience: _config["Jwt:Audience"] ?? "RideApp",
-                claims: claims,
-                expires: expiresAt,
-                signingCredentials: creds);
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            return null;
         }
+
+        private async Task<AuthUser?> ReadUserByIdAsync(string region, int userId)
+        {
+            await using var conn = await _db.GetConnectionAsync(region, isWrite: false);
+            const string sql = @"
+SELECT u.UserID, u.Email, u.Role, u.CustomerID, u.DriverID,
+       COALESCE(c.FullName, d.Name, u.Name, '') AS DisplayName,
+       COALESCE(c.Phone, d.Phone, u.Phone, '') AS DisplayPhone,
+       COALESCE(u.RegionID, @regionId) AS RegionID,
+       CASE WHEN LOWER(u.IsActive::text) IN ('1','t','true') THEN TRUE ELSE FALSE END AS IsActive
+FROM Users u
+LEFT JOIN Customers c ON c.CustomerID = u.CustomerID
+LEFT JOIN Drivers d ON d.DriverID = u.DriverID
+WHERE u.UserID = @userId
+LIMIT 1";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@userId", userId);
+            cmd.Parameters.AddWithValue("@regionId", region == "NORTH" ? 1 : 2);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                return null;
+
+            return new AuthUser(
+                reader.GetInt32(reader.GetOrdinal("UserID")),
+                reader.GetString(reader.GetOrdinal("Email")),
+                reader.GetString(reader.GetOrdinal("Role")),
+                reader.IsDBNull(reader.GetOrdinal("CustomerID")) ? null : reader.GetInt32(reader.GetOrdinal("CustomerID")),
+                reader.IsDBNull(reader.GetOrdinal("DriverID")) ? null : reader.GetInt32(reader.GetOrdinal("DriverID")),
+                reader.GetString(reader.GetOrdinal("DisplayName")),
+                reader.GetString(reader.GetOrdinal("DisplayPhone")),
+                reader.GetInt32(reader.GetOrdinal("RegionID")),
+                reader.GetBoolean(reader.GetOrdinal("IsActive")));
+        }
+
+        private static string? ValidateRegister(string name, string email, string phone, string password)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return "Họ tên không được để trống.";
+            if (!IsValidEmail(email))
+                return "Email không hợp lệ.";
+            if (!IsValidPhone(phone))
+                return "Số điện thoại không hợp lệ.";
+            if (password.Length < 6)
+                return "Mật khẩu phải có ít nhất 6 ký tự.";
+
+            return null;
+        }
+
+        private static bool IsValidEmail(string email)
+            => new EmailAddressAttribute().IsValid(email);
+
+        private static bool IsValidPhone(string phone)
+            => Regex.IsMatch(phone, @"^\+?[0-9]{9,15}$");
     }
 
     public class LoginRequest
@@ -259,4 +399,27 @@ namespace RideAPI.Controllers
         public double? Latitude { get; set; }
         public string? Province { get; set; }
     }
+
+    public class RefreshRequest
+    {
+        public string RefreshToken { get; set; } = string.Empty;
+        public double? Latitude { get; set; }
+        public string? Province { get; set; }
+    }
+
+    public class LogoutRequest
+    {
+        public string? RefreshToken { get; set; }
+    }
+
+    internal readonly record struct AuthUser(
+        int UserId,
+        string Email,
+        string Role,
+        int? CustomerId,
+        int? DriverId,
+        string Name,
+        string Phone,
+        int RegionId,
+        bool IsActive);
 }

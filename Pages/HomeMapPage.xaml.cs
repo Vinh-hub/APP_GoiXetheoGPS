@@ -615,14 +615,14 @@ namespace APP_GoiXetheoGPS.Pages
                 await DistributedDatabaseService.SaveStatsAsync(stats);
 
                 // Show alert
-                await DisplayAlert(
+                await DisplayAlertAsync(
                     "Database Statistics",
                     message,
                     "OK");
             }
             catch (Exception ex)
             {
-                await DisplayAlert(
+                await DisplayAlertAsync(
                     "Error",
                     $"Failed to fetch database stats: {ex.Message}",
                     "OK");

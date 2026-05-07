@@ -32,29 +32,24 @@ public partial class LoginPage : ContentPage
             var email = LoginEmailEntry.Text?.Trim() ?? string.Empty;
             var password = LoginPasswordEntry.Text ?? string.Empty;
 
-            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            if (string.IsNullOrWhiteSpace(email) || !email.Contains('@') || string.IsNullOrWhiteSpace(password))
             {
-                await this.DisplayAlertAsync("Đăng nhập", "Vui lòng nhập email và mật khẩu.", "OK");
+                await AppAlertService.ShowAsync(this, "Đăng nhập", "Vui lòng nhập email hợp lệ và mật khẩu.");
                 return;
             }
 
             var result = await _authApiService.LoginAsync(email, password);
             if (result is null || string.IsNullOrWhiteSpace(result.Token))
             {
-                await this.DisplayAlertAsync("Đăng nhập", "Email hoặc mật khẩu không chính xác.", "OK");
+                await AppAlertService.ShowAsync(this, "Đăng nhập", "Email hoặc mật khẩu không chính xác.");
                 return;
             }
-
-            await this.DisplayAlertAsync(
-                "Đăng nhập thành công",
-                result.Message ?? "Đăng nhập thành công.",
-                "OK");
 
             await Shell.Current.GoToAsync("//home");
         }
         catch (Exception ex)
         {
-            await this.DisplayAlertAsync("Đăng nhập", ApiErrorHandler.ToUserMessage(ex), "OK");
+            await AppAlertService.ShowAsync(this, "Đăng nhập", ApiErrorHandler.ToUserMessage(ex));
         }
         finally
         {

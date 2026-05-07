@@ -14,7 +14,7 @@ namespace RideAPI.Services
             _retry = retry;
         }
 
-        public async Task<int> RequestTripAsync(TripRequestDto request)
+        public async Task<int> RequestTripAsync(TripRequestDto request, int userId)
         {
             var region = LocationRoutingService.ResolveRegion(request.Latitude, null);
             return await _retry.ExecuteWithRetry(async conn =>
@@ -26,12 +26,12 @@ namespace RideAPI.Services
 
                 return await conn.ExecuteScalarAsync<int>(sql, new
                 {
-                    UserId = request.UserID,
+                    UserId = userId,
                     Status = "Requested",
                     request.Price,
                     StartLat = request.Latitude,
                     StartLng = request.Longitude,
-                    EndLat = request.Longitude,
+                    EndLat = request.Latitude,
                     EndLng = request.Longitude
                 });
             }, region, true);
@@ -51,7 +51,7 @@ namespace RideAPI.Services
             }, region, false);
         }
 
-        public async Task AcceptTripAsync(AcceptTripDto request)
+        public async Task AcceptTripAsync(AcceptTripDto request, int driverId)
         {
             var region = LocationRoutingService.ResolveRegionFromLatitude(request.Latitude);
             await _retry.ExecuteWithRetry(async conn =>
@@ -61,7 +61,7 @@ namespace RideAPI.Services
                     SET DriverID = @driverId, Status = 'Accepted'
                     WHERE TripID = @tripId";
 
-                await conn.ExecuteAsync(sql, new { driverId = request.DriverID, tripId = request.TripID });
+                await conn.ExecuteAsync(sql, new { driverId, tripId = request.TripID });
                 return 0;
             }, region, true);
         }

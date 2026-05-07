@@ -7,23 +7,45 @@ namespace APP_GoiXetheoGPS.Services;
 public sealed class AuthSessionService
 {
     const string AccessTokenKey = "auth_access_token";
+    const string RefreshTokenKey = "auth_refresh_token";
     const string UserIdKey = "auth_user_id";
     const string RoleKey = "auth_role";
     const string EmailKey = "auth_email";
     const string NameKey = "auth_name";
     const string RegionIdKey = "auth_region_id";
 
+    string? _accessToken;
+    string? _refreshToken;
+    bool _restored;
+
     public event EventHandler? LoginStateChanged;
 
     public string? AccessToken
     {
-        get => Preferences.Default.Get<string?>(AccessTokenKey, null);
+        get => _accessToken ?? Preferences.Default.Get<string?>(AccessTokenKey, null);
         set
         {
             if (string.IsNullOrWhiteSpace(value))
                 Clear();
             else
-                Preferences.Default.Set(AccessTokenKey, value);
+            {
+                _accessToken = value;
+                Preferences.Default.Remove(AccessTokenKey);
+                _ = SecureStorage.Default.SetAsync(AccessTokenKey, value);
+            }
+        }
+    }
+
+    public string? RefreshToken
+    {
+        get => _refreshToken;
+        private set
+        {
+            _refreshToken = value;
+            if (string.IsNullOrWhiteSpace(value))
+                SecureStorage.Default.Remove(RefreshTokenKey);
+            else
+                _ = SecureStorage.Default.SetAsync(RefreshTokenKey, value);
         }
     }
 
@@ -69,18 +91,47 @@ public sealed class AuthSessionService
         return expires.Value <= DateTimeOffset.UtcNow.AddMinutes(1);
     }
 
-    public void RefreshLoginFromStorage()
+    public async Task RestoreAsync()
     {
-        // Force refresh of login status from storage
-        // This is called when navigating to AuthPage
+        if (_restored)
+            return;
+
+        _accessToken = await SecureStorage.Default.GetAsync(AccessTokenKey);
+        _refreshToken = await SecureStorage.Default.GetAsync(RefreshTokenKey);
+
+        var legacyToken = Preferences.Default.Get<string?>(AccessTokenKey, null);
+        if (string.IsNullOrWhiteSpace(_accessToken) && !string.IsNullOrWhiteSpace(legacyToken))
+        {
+            _accessToken = legacyToken;
+            await SecureStorage.Default.SetAsync(AccessTokenKey, legacyToken);
+            Preferences.Default.Remove(AccessTokenKey);
+        }
+
+        _restored = true;
+        if (IsTokenExpired())
+            Clear();
     }
 
-    public void SaveLogin(AuthApiService.AuthResponse response)
+    public void RefreshLoginFromStorage()
+    {
+        _ = RestoreAsync();
+    }
+
+    public async Task SaveLoginAsync(AuthApiService.AuthResponse response)
     {
         if (response is null || string.IsNullOrWhiteSpace(response.Token))
             return;
 
-        AccessToken = response.Token;
+        _accessToken = response.Token;
+        Preferences.Default.Remove(AccessTokenKey);
+        await SecureStorage.Default.SetAsync(AccessTokenKey, response.Token);
+
+        if (!string.IsNullOrWhiteSpace(response.RefreshToken))
+        {
+            _refreshToken = response.RefreshToken;
+            await SecureStorage.Default.SetAsync(RefreshTokenKey, response.RefreshToken);
+        }
+
         UserId = response.UserId;
         Role = response.Role ?? string.Empty;
         Email = response.Email ?? string.Empty;
@@ -117,7 +168,12 @@ public sealed class AuthSessionService
 
     public void Clear()
     {
+        _accessToken = null;
+        _refreshToken = null;
+        SecureStorage.Default.Remove(AccessTokenKey);
+        SecureStorage.Default.Remove(RefreshTokenKey);
         Preferences.Default.Remove(AccessTokenKey);
+        Preferences.Default.Remove(RefreshTokenKey);
         Preferences.Default.Remove(UserIdKey);
         Preferences.Default.Remove(RoleKey);
         Preferences.Default.Remove(EmailKey);

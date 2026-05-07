@@ -152,6 +152,8 @@ public static class TripDataStore
             {
                 using var request = await CreateGetRequestAsync(route, cancellationToken).ConfigureAwait(false);
                 using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    Session.Clear();
                 if (!response.IsSuccessStatusCode)
                     continue;
 
@@ -190,6 +192,8 @@ public static class TripDataStore
             {
                 using var request = await CreateGetRequestAsync(route, cancellationToken).ConfigureAwait(false);
                 using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    Session.Clear();
                 if (!response.IsSuccessStatusCode)
                     continue;
 
@@ -304,6 +308,7 @@ public static class TripDataStore
     {
         var request = new HttpRequestMessage(HttpMethod.Get, WebApiServerConfig.BuildUrl(route));
 
+        await Session.RestoreAsync().ConfigureAwait(false);
         var token = Session.AccessToken;
         if (!string.IsNullOrWhiteSpace(token))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);

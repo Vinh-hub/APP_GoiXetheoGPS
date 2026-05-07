@@ -26,12 +26,6 @@ public partial class AuthPage : ContentPage
         });
     }
 
-    protected override void OnDisappearing()
-    {
-        base.OnDisappearing();
-        _sessionService.LoginStateChanged -= OnLoginStateChanged;
-    }
-
     protected override void OnAppearing()
     {
         base.OnAppearing();
@@ -67,11 +61,12 @@ public partial class AuthPage : ContentPage
             await _authApiService.LogoutAsync();
             UpdateJwtStatusLabel();
             SessionStatusLabel.Text = "Phiên đã được đăng xuất.";
-            await this.DisplayAlertAsync("Đăng xuất", "Đã đăng xuất.", "OK");
+            await AppAlertService.ShowAsync(this, "Đăng xuất", "Đã đăng xuất.");
+            await Shell.Current.GoToAsync("//auth-welcome");
         }
         catch (Exception ex)
         {
-            await this.DisplayAlertAsync("Đăng xuất", ApiErrorHandler.ToUserMessage(ex), "OK");
+            await AppAlertService.ShowAsync(this, "Đăng xuất", ApiErrorHandler.ToUserMessage(ex));
         }
         finally
         {
@@ -107,7 +102,7 @@ public partial class AuthPage : ContentPage
             {
                 SessionStatusLabel.Text = "Chưa đăng nhập.";
                 if (showFeedback)
-                    await this.DisplayAlertAsync("Phiên đăng nhập", "Bạn chưa đăng nhập.", "OK");
+                    await AppAlertService.ShowAsync(this, "Phiên đăng nhập", "Bạn chưa đăng nhập.");
                 return;
             }
 
@@ -117,7 +112,7 @@ public partial class AuthPage : ContentPage
                 UpdateJwtStatusLabel();
                 SessionStatusLabel.Text = "Phiên đã hết hạn.";
                 if (showFeedback)
-                    await this.DisplayAlertAsync("Phiên đăng nhập", "Phiên đã hết hạn. Vui lòng đăng nhập lại.", "OK");
+                    await AppAlertService.ShowAsync(this, "Phiên đăng nhập", "Phiên đã hết hạn. Vui lòng đăng nhập lại.");
                 return;
             }
 
@@ -128,21 +123,21 @@ public partial class AuthPage : ContentPage
                 UpdateJwtStatusLabel();
                 SessionStatusLabel.Text = "Phiên không hợp lệ.";
                 if (showFeedback)
-                    await this.DisplayAlertAsync("Phiên đăng nhập", "Phiên không hợp lệ. Vui lòng đăng nhập lại.", "OK");
+                    await AppAlertService.ShowAsync(this, "Phiên đăng nhập", "Phiên không hợp lệ. Vui lòng đăng nhập lại.");
                 return;
             }
 
             UpdateJwtStatusLabel();
             SessionStatusLabel.Text = "Phiên hợp lệ.";
             if (showFeedback)
-                await this.DisplayAlertAsync("Phiên đăng nhập", "Phiên vẫn hợp lệ.", "OK");
+                await AppAlertService.ShowAsync(this, "Phiên đăng nhập", "Phiên vẫn hợp lệ.");
         }
         catch (Exception ex)
         {
             UpdateJwtStatusLabel();
             SessionStatusLabel.Text = "Không thể kiểm tra phiên lúc này.";
             if (showFeedback)
-                await this.DisplayAlertAsync("Phiên đăng nhập", ApiErrorHandler.ToUserMessage(ex), "OK");
+                await AppAlertService.ShowAsync(this, "Phiên đăng nhập", ApiErrorHandler.ToUserMessage(ex));
         }
     }
 

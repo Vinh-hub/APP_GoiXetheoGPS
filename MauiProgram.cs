@@ -9,6 +9,8 @@ namespace APP_GoiXetheoGPS
 {
     public static class MauiProgram
     {
+        public static IServiceProvider? Services { get; private set; }
+
         public static MauiApp CreateMauiApp()
         {
             var builder = MauiApp.CreateBuilder();
@@ -57,7 +59,9 @@ namespace APP_GoiXetheoGPS
             builder.Services.AddSingleton<PaymentApiService>();
             builder.Services.AddSingleton<RatingApiService>();
 
-            return builder.Build();
+            var app = builder.Build();
+            Services = app.Services;
+            return app;
         }
     }
 }

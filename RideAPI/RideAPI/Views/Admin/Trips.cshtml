@@ -8,7 +8,6 @@
 
 <div class="toolbar">
     <h1 class="panel-title" style="margin:0;">Chi tiết chuyến</h1>
-    <a class="btn-dark" href="/admin/dashboard">← Bảng điều khiển</a>
 </div>
 
 <div class="panel tool-form" style="margin-bottom:14px;">
@@ -110,26 +109,18 @@
         const latitude = document.getElementById('latitude').value;
         const lat = document.getElementById('lat').value;
 
+        if (!tripId || Number(tripId) <= 0) {
+            AdminApi.showToast('Vui lòng nhập mã chuyến hợp lệ.', 'error');
+            return;
+        }
+
         const url = `/api/trips/${encodeURIComponent(tripId)}?latitude=${encodeURIComponent(latitude)}&lat=${encodeURIComponent(lat)}`;
         setLoading();
+        AdminApi.setBusy(btn, true, 'Đang tìm...');
 
         try {
-            const res = await fetch(url, { method: 'GET', credentials: 'same-origin' });
-            const text = await res.text();
-            statusEl.textContent = `Trạng thái: ${res.status}`;
-
-            if (!res.ok) {
-                emptyEl.style.display = 'block';
-                emptyEl.textContent = 'Không tải được dữ liệu.';
-                return;
-            }
-
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch {
-                data = null;
-            }
+            const data = await AdminApi.fetchJson(url, { method: 'GET' });
+            statusEl.textContent = 'Trạng thái: Thành công';
 
             if (!data || typeof data !== 'object' || Array.isArray(data)) {
                 emptyEl.style.display = 'block';
@@ -138,10 +129,13 @@
             }
 
             renderTripDetails(data);
+            AdminApi.showToast('Đã tải thông tin chuyến.', 'success');
         } catch (e) {
             statusEl.textContent = 'Trạng thái: Lỗi';
             emptyEl.style.display = 'block';
-            emptyEl.textContent = `Lỗi: ${e}`;
+            emptyEl.textContent = `Lỗi: ${e.message || e}`;
+        } finally {
+            AdminApi.setBusy(btn, false);
         }
     });
 </script>

@@ -6,7 +6,7 @@ using RideAPI.Services;
 namespace RideAPI.Controllers
 {
     [ApiController]
-    [AllowAnonymous]
+    [Authorize]
     [Route("api/distributed-db")]
     [Route("api/database")]
     [Route("api/distributeddb")]

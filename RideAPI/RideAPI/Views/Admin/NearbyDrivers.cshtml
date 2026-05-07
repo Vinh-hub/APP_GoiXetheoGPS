@@ -113,26 +113,18 @@
         const limit = document.getElementById('limit').value;
         const lat = document.getElementById('lat').value;
 
+        if (!latitude || !longitude || Number(radiusKm) <= 0 || Number(limit) <= 0) {
+            AdminApi.showToast('Vui lòng nhập tọa độ, bán kính và số lượng hợp lệ.', 'error');
+            return;
+        }
+
         const url = `/api/drivers/nearby?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&radiusKm=${encodeURIComponent(radiusKm)}&limit=${encodeURIComponent(limit)}&lat=${encodeURIComponent(lat)}`;
         setLoading();
+        AdminApi.setBusy(btn, true, 'Đang tìm...');
 
         try {
-            const res = await fetch(url, { method: 'GET', credentials: 'same-origin' });
-            const text = await res.text();
-            statusEl.textContent = `Trạng thái: ${res.status}`;
-
-            if (!res.ok) {
-                emptyEl.style.display = 'block';
-                emptyEl.textContent = 'Không tải được dữ liệu.';
-                return;
-            }
-
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch {
-                data = null;
-            }
+            const data = await AdminApi.fetchJson(url, { method: 'GET' });
+            statusEl.textContent = 'Trạng thái: Thành công';
 
             if (!Array.isArray(data) || data.length === 0) {
                 driverTable.style.display = 'none';
@@ -142,10 +134,13 @@
             }
 
             renderDrivers(data);
+            AdminApi.showToast('Đã tải danh sách tài xế.', 'success');
         } catch (e) {
             statusEl.textContent = 'Trạng thái: Lỗi';
             emptyEl.style.display = 'block';
-            emptyEl.textContent = `Lỗi: ${e}`;
+            emptyEl.textContent = `Lỗi: ${e.message || e}`;
+        } finally {
+            AdminApi.setBusy(btn, false);
         }
     });
 </script>

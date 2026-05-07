@@ -36,6 +36,10 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddSingleton<DatabaseService>();
+builder.Services.AddSingleton<PasswordHasherService>();
+builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddSingleton<RefreshTokenService>();
+builder.Services.AddSingleton<AuthSchemaService>();
 builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<DbRetryService>();
 builder.Services.AddDistributedMemoryCache();
@@ -48,8 +52,7 @@ builder.Services.AddSession(options =>
 
 builder.Services.AddHttpClient();
 
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? "YourSuperSecretKeyForJwtAuthenticationWhichNeedsToBeLongEnough";
+var jwtKey = GetJwtKey(builder.Configuration, builder.Environment);
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "RideAPI";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "RideApp";
 
@@ -66,7 +69,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-            ClockSkew = TimeSpan.FromMinutes(2)
+            ClockSkew = TimeSpan.FromSeconds(30)
         };
         options.Events = new JwtBearerEvents
         {
@@ -92,9 +95,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
                 return Task.CompletedTask;
             },
+            OnTokenValidated = async context =>
+            {
+                var regionIdRaw = context.Principal?.FindFirst("regionId")?.Value;
+                var region = int.TryParse(regionIdRaw, out var regionId) && regionId == 1 ? "NORTH" : "SOUTH";
+                var jwtId = context.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
+                var refreshTokens = context.HttpContext.RequestServices.GetRequiredService<RefreshTokenService>();
+                if (await refreshTokens.IsJwtRevokedAsync(region, jwtId))
+                    context.Fail("Token has been revoked.");
+            },
             OnAuthenticationFailed = context =>
             {
-                context.NoResult();
                 return Task.CompletedTask;
             },
             OnChallenge = async context =>
@@ -121,16 +132,35 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
                 var body = JsonSerializer.Serialize(new { message });
                 await context.Response.WriteAsync(body);
+            },
+            OnForbidden = async context =>
+            {
+                if (context.Response.HasStarted)
+                    return;
+
+                if (context.Request.Path.StartsWithSegments("/admin"))
+                {
+                    context.Response.Redirect("/admin/unauthorized");
+                    return;
+                }
+
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/json; charset=utf-8";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new { message = "Bạn không có quyền truy cập tài nguyên này." }));
             }
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+});
 
 var app = builder.Build();
 
 try
 {
+    await EnsureAuthSchemaAsync(app.Services);
     await EnsureAdminAccountAsync(app.Services, builder.Configuration);
 }
 catch (InvalidOperationException ex) when (ex.Message.Contains("DB_NODES_DOWN") || ex.Message.Contains("DOWN_CANNOT_WRITE"))
@@ -147,31 +177,81 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    app.UseExceptionHandler("/admin/status/500");
+}
+
+app.UseStatusCodePages(async context =>
+{
+    var http = context.HttpContext;
+    if (http.Response.HasStarted)
+        return;
+
+    if (http.Request.Path.StartsWithSegments("/api"))
+    {
+        http.Response.ContentType = "application/json; charset=utf-8";
+        await http.Response.WriteAsync(JsonSerializer.Serialize(new
+        {
+            message = http.Response.StatusCode switch
+            {
+                StatusCodes.Status401Unauthorized => "Bạn cần đăng nhập.",
+                StatusCodes.Status403Forbidden => "Bạn không có quyền truy cập.",
+                StatusCodes.Status404NotFound => "Không tìm thấy API.",
+                _ => "Yêu cầu không thành công."
+            }
+        }));
+        return;
+    }
+
+    http.Response.Redirect($"/admin/status/{http.Response.StatusCode}");
+});
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseSession();
-app.UseStaticFiles();
 app.UseMiddleware<LocationRoutingMiddleware>();
 app.MapGet("/", () => Results.Redirect("/admin/login"));
 app.MapControllerRoute(name: "default", pattern: "{controller=Home}/{action=Index}/{id?}");
 app.MapControllers();
 app.Run();
 
+static string GetJwtKey(IConfiguration configuration, IWebHostEnvironment environment)
+{
+    var jwtKey = configuration["Jwt:Key"];
+    if (!string.IsNullOrWhiteSpace(jwtKey) && jwtKey.Length >= 32)
+        return jwtKey;
+
+    if (environment.IsDevelopment())
+    {
+        Console.WriteLine("Warning: Jwt:Key is missing; using a development-only signing key.");
+        return "DevelopmentOnlyJwtSigningKey_ChangeMe_AtLeast32Chars";
+    }
+
+    throw new InvalidOperationException("Jwt:Key must be configured with at least 32 characters.");
+}
+
+static async Task EnsureAuthSchemaAsync(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var schema = scope.ServiceProvider.GetRequiredService<AuthSchemaService>();
+    await schema.EnsureAsync();
+}
+
 static async Task EnsureAdminAccountAsync(IServiceProvider services, IConfiguration configuration)
 {
     using var scope = services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<DatabaseService>();
-
     var adminEmail = configuration["AdminSeed:Email"] ?? "admin@rideapi.local";
     var adminPassword = configuration["AdminSeed:Password"] ?? "Admin@123";
     var adminName = configuration["AdminSeed:Name"] ?? "System Admin";
     var adminPhone = configuration["AdminSeed:Phone"] ?? "0900000000";
 
-    await EnsureAdminForRegionAsync(await db.GetConnectionAsync("NORTH", false), 1, adminEmail, adminPassword, adminName, adminPhone);
-    await EnsureAdminForRegionAsync(await db.GetConnectionAsync("SOUTH", false), 2, adminEmail, adminPassword, adminName, adminPhone);
+    await EnsureAdminForRegionAsync(await db.GetConnectionAsync("NORTH", true), 1, adminEmail, adminPassword, adminName, adminPhone);
+    await EnsureAdminForRegionAsync(await db.GetConnectionAsync("SOUTH", true), 2, adminEmail, adminPassword, adminName, adminPhone);
 }
 
 static async Task EnsureAdminForRegionAsync(NpgsqlConnection conn, int regionId, string email, string password, string name, string phone)

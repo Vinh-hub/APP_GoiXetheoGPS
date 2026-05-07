@@ -5,7 +5,7 @@ namespace RideAPI.Models.ViewModels
         public int TripId { get; set; }
         public int UserId { get; set; }
         public int DriverId { get; set; }
-        public string Status { get; set; }
+        public string Status { get; set; } = string.Empty;
         public decimal Price { get; set; }
         public double? StartLat { get; set; }
         public double? StartLng { get; set; }
@@ -13,7 +13,7 @@ namespace RideAPI.Models.ViewModels
         public double? EndLng { get; set; }
         public decimal? PaymentAmount { get; set; }
         public int? DriverRating { get; set; }
-        public string DriverComment { get; set; }
+        public string DriverComment { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
     }
 }

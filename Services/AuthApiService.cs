@@ -19,8 +19,11 @@ public sealed class AuthApiService
             requiresAuth: false,
             cancellationToken);
 
+        if (response is not null && string.IsNullOrWhiteSpace(response.Token))
+            response.Token = response.AccessToken;
+
         if (!string.IsNullOrWhiteSpace(response?.Token))
-            _session.SaveLogin(response);
+            await _session.SaveLoginAsync(response);
 
         return response;
     }
@@ -33,8 +36,11 @@ public sealed class AuthApiService
             requiresAuth: false,
             cancellationToken);
 
+        if (response is not null && string.IsNullOrWhiteSpace(response.Token))
+            response.Token = response.AccessToken;
+
         if (!string.IsNullOrWhiteSpace(response?.Token))
-            _session.SaveLogin(response);
+            await _session.SaveLoginAsync(response);
 
         return response;
     }
@@ -72,9 +78,10 @@ public sealed class AuthApiService
 
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
+        var refreshToken = _session.RefreshToken;
         try
         {
-            await _api.PostAsync<object>("/api/auth/logout", new { }, requiresAuth: true, cancellationToken);
+            await _api.PostAsync<object>("/api/auth/logout", new LogoutRequest(refreshToken), requiresAuth: true, cancellationToken);
         }
         catch
         {
@@ -84,14 +91,43 @@ public sealed class AuthApiService
         _session.Clear();
     }
 
+    public async Task<AuthResponse?> RefreshAsync(CancellationToken cancellationToken = default)
+    {
+        var refreshToken = _session.RefreshToken;
+        if (string.IsNullOrWhiteSpace(refreshToken))
+            return null;
+
+        var response = await _api.PostAsync<RefreshRequest, AuthResponse>(
+            "/api/auth/refresh",
+            new RefreshRequest(refreshToken),
+            requiresAuth: false,
+            cancellationToken);
+
+        if (response is not null && string.IsNullOrWhiteSpace(response.Token))
+            response.Token = response.AccessToken;
+
+        if (!string.IsNullOrWhiteSpace(response?.Token))
+            await _session.SaveLoginAsync(response);
+
+        return response;
+    }
+
     public sealed record LoginRequest(string Email, string Password);
 
     public sealed record RegisterRequest(string Name, string Phone, string Email, string Password);
+
+    public sealed record RefreshRequest(string RefreshToken);
+
+    public sealed record LogoutRequest(string? RefreshToken);
 
     public sealed class AuthResponse
     {
         public string? Message { get; set; }
         public string? Token { get; set; }
+        public string? AccessToken { get; set; }
+        public DateTime? ExpiresAtUtc { get; set; }
+        public string? RefreshToken { get; set; }
+        public DateTime? RefreshTokenExpiresAtUtc { get; set; }
         public int UserId { get; set; }
         public string? Role { get; set; }
         public int? CustomerId { get; set; }

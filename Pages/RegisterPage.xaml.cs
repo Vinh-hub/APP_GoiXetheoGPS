@@ -37,29 +37,37 @@ public partial class RegisterPage : ContentPage
 
             if (string.IsNullOrWhiteSpace(request.Name)
                 || string.IsNullOrWhiteSpace(request.Email)
+                || string.IsNullOrWhiteSpace(request.Phone)
                 || string.IsNullOrWhiteSpace(request.Password))
             {
-                await this.DisplayAlertAsync("Đăng ký", "Vui lòng nhập đủ họ tên, email, mật khẩu.", "OK");
+                await AppAlertService.ShowAsync(this, "Đăng ký", "Vui lòng nhập đủ họ tên, số điện thoại, email, mật khẩu.");
+                return;
+            }
+
+            if (!request.Email.Contains('@') || request.Password.Length < 6)
+            {
+                await AppAlertService.ShowAsync(this, "Đăng ký", "Email không hợp lệ hoặc mật khẩu dưới 6 ký tự.");
+                return;
+            }
+
+            if (!System.Text.RegularExpressions.Regex.IsMatch(request.Phone, @"^\+?[0-9]{9,15}$"))
+            {
+                await AppAlertService.ShowAsync(this, "Đăng ký", "Số điện thoại không hợp lệ.");
                 return;
             }
 
             var result = await _authApiService.RegisterAsync(request);
             if (result is null || string.IsNullOrWhiteSpace(result.Token))
             {
-                await this.DisplayAlertAsync("Đăng ký", "Đăng ký thất bại. Vui lòng thử lại.", "OK");
+                await AppAlertService.ShowAsync(this, "Đăng ký", "Đăng ký thất bại. Vui lòng thử lại.");
                 return;
             }
-
-            await this.DisplayAlertAsync(
-                "Đăng ký thành công",
-                result.Message ?? "Tạo tài khoản thành công.",
-                "OK");
 
             await Shell.Current.GoToAsync("//home");
         }
         catch (Exception ex)
         {
-            await this.DisplayAlertAsync("Đăng ký", ApiErrorHandler.ToUserMessage(ex), "OK");
+            await AppAlertService.ShowAsync(this, "Đăng ký", ApiErrorHandler.ToUserMessage(ex));
         }
         finally
         {

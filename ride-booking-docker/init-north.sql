@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS Drivers (
 CREATE TABLE IF NOT EXISTS Users (
     UserID     SERIAL PRIMARY KEY,
     Email      VARCHAR(100) NOT NULL UNIQUE,
-    Password   VARCHAR(100) NOT NULL,
-    Role       VARCHAR(20) NOT NULL CHECK (Role IN ('Customer', 'Driver')),
+    Password   VARCHAR(255) NOT NULL,
+    Role       VARCHAR(20) NOT NULL CHECK (Role IN ('Admin', 'Customer', 'Driver')),
     CustomerID INT NULL UNIQUE REFERENCES Customers(CustomerID),
     DriverID   INT NULL UNIQUE REFERENCES Drivers(DriverID),
     Name       VARCHAR(100),
@@ -44,8 +44,37 @@ CREATE TABLE IF NOT EXISTS Users (
     RegionID   INT REFERENCES Regions(RegionID),
     IsActive   BOOLEAN NOT NULL DEFAULT TRUE,
     CreatedAt  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CHECK ((Role='Customer' AND CustomerID IS NOT NULL AND DriverID IS NULL) OR
+    CHECK ((Role='Admin' AND CustomerID IS NULL AND DriverID IS NULL) OR
+           (Role='Customer' AND CustomerID IS NOT NULL AND DriverID IS NULL) OR
            (Role='Driver' AND DriverID IS NOT NULL AND CustomerID IS NULL))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email_lower ON Users (LOWER(Email));
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_phone_nonempty ON Users (Phone) WHERE Phone IS NOT NULL AND BTRIM(Phone) <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS ux_customers_email_lower_nonempty ON Customers (LOWER(Email)) WHERE Email IS NOT NULL AND BTRIM(Email) <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS ux_customers_phone_nonempty ON Customers (Phone) WHERE Phone IS NOT NULL AND BTRIM(Phone) <> '';
+
+CREATE TABLE IF NOT EXISTS AuthRefreshTokens (
+    TokenID SERIAL PRIMARY KEY,
+    UserID INT NOT NULL REFERENCES Users(UserID) ON DELETE CASCADE,
+    TokenHash VARCHAR(128) NOT NULL UNIQUE,
+    JwtID VARCHAR(64) NULL,
+    RegionID INT NOT NULL,
+    Role VARCHAR(20) NOT NULL,
+    CreatedAtUtc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
+    ExpiresAtUtc TIMESTAMP NOT NULL,
+    RevokedAtUtc TIMESTAMP NULL,
+    ReplacedByTokenHash VARCHAR(128) NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_auth_refresh_tokens_user ON AuthRefreshTokens (UserID);
+CREATE INDEX IF NOT EXISTS ix_auth_refresh_tokens_expiry ON AuthRefreshTokens (ExpiresAtUtc);
+
+CREATE TABLE IF NOT EXISTS RevokedJwtTokens (
+    JwtID VARCHAR(64) PRIMARY KEY,
+    UserID INT NULL,
+    ExpiresAtUtc TIMESTAMP NOT NULL,
+    RevokedAtUtc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
 );
 
 -- Bảng Vehicles

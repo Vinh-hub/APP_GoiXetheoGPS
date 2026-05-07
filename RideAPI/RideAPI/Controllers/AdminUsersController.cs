@@ -7,15 +7,17 @@ using RideAPI.Services;
 
 namespace RideAPI.Controllers;
 
-[Authorize]
+[Authorize(Policy = "AdminOnly")]
 [Route("admin/users")]
 public class AdminUsersController : Controller
 {
     private readonly DatabaseService _db;
+    private readonly PasswordHasherService _passwords;
 
-    public AdminUsersController(DatabaseService db)
+    public AdminUsersController(DatabaseService db, PasswordHasherService passwords)
     {
         _db = db;
+        _passwords = passwords;
     }
 
     [HttpGet("")]
@@ -116,6 +118,10 @@ WHERE 1=1";
         await using var conn = _db.GetConnection(model.RegionId == 1 ? 20 : 10);
         await conn.OpenAsync();
 
+        await ValidateDuplicatesAsync(conn, model.Email, model.Phone, currentUserId: null);
+        if (!ModelState.IsValid)
+            return View(model);
+
         const string sql = @"
 INSERT INTO Users (Email, Password, Role, CustomerID, DriverID, Name, Phone, RegionID, IsActive)
 VALUES (@email, @password, @role, @customerId, @driverId, @name, @phone, @regionId, @isActive)";
@@ -209,6 +215,10 @@ WHERE UserID = @id";
         await using var conn = _db.GetConnection(model.RegionId == 1 ? 20 : 10);
         await conn.OpenAsync();
 
+        await ValidateDuplicatesAsync(conn, model.Email, model.Phone, currentUserId: id);
+        if (!ModelState.IsValid)
+            return View(model);
+
         const string sql = @"
 UPDATE Users
 SET Email = @email,
@@ -251,10 +261,11 @@ WHERE UserID = @id";
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(int id)
     {
-        if (!TryGetAdminContext(out var regionId, out var currentUserId))
+        if (!TryGetAdminContext(out var adminRegionId, out var currentUserId))
             return Forbid();
 
-        if (id == currentUserId)
+        var regionId = AdminRegionScopeHelper.GetScopedRegionId(Request, adminRegionId);
+        if (regionId == adminRegionId && id == currentUserId)
             return BadRequest("Không thể xóa tài khoản admin đang đăng nhập.");
 
         await using var conn = _db.GetConnection(regionId == 1 ? 20 : 10);
@@ -272,10 +283,11 @@ WHERE UserID = @id";
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ToggleLock(int id)
     {
-        if (!TryGetAdminContext(out var regionId, out var currentUserId))
+        if (!TryGetAdminContext(out var adminRegionId, out var currentUserId))
             return Forbid();
 
-        if (id == currentUserId)
+        var regionId = AdminRegionScopeHelper.GetScopedRegionId(Request, adminRegionId);
+        if (regionId == adminRegionId && id == currentUserId)
             return BadRequest("Không thể tự khóa tài khoản đang đăng nhập.");
 
         await using var conn = _db.GetConnection(regionId == 1 ? 20 : 10);
@@ -321,6 +333,11 @@ WHERE UserID = @id";
 
         if (isCreate && string.IsNullOrWhiteSpace(model.Password))
             ModelState.AddModelError(nameof(model.Password), "Password là bắt buộc khi tạo user.");
+        if (!string.IsNullOrWhiteSpace(model.Password) && model.Password.Length < 6)
+            ModelState.AddModelError(nameof(model.Password), "Password phải có ít nhất 6 ký tự.");
+        if (!string.IsNullOrWhiteSpace(model.Phone)
+            && !System.Text.RegularExpressions.Regex.IsMatch(model.Phone.Trim(), @"^\+?[0-9]{9,15}$"))
+            ModelState.AddModelError(nameof(model.Phone), "Số điện thoại không hợp lệ.");
 
         if (role == "Admin")
         {
@@ -348,5 +365,40 @@ WHERE UserID = @id";
             return LocationRoutingService.ResolveRegionId(latitude, province);
 
         return fallbackRegionId is 1 or 2 ? fallbackRegionId : 2;
+    }
+
+    private async Task ValidateDuplicatesAsync(NpgsqlConnection conn, string email, string phone, int? currentUserId)
+    {
+        const string sql = @"
+SELECT
+    EXISTS (
+        SELECT 1 FROM Users
+        WHERE LOWER(Email) = LOWER(@email)
+          AND (@currentUserId IS NULL OR UserID <> @currentUserId)
+    ) AS EmailExists,
+    EXISTS (
+        SELECT 1 FROM Users
+        WHERE Phone = @phone
+          AND BTRIM(COALESCE(Phone, '')) <> ''
+          AND (@currentUserId IS NULL OR UserID <> @currentUserId)
+    ) AS UserPhoneExists,
+    EXISTS (
+        SELECT 1 FROM Customers
+        WHERE Phone = @phone
+          AND BTRIM(COALESCE(Phone, '')) <> ''
+    ) AS CustomerPhoneExists";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@email", email.Trim());
+        cmd.Parameters.AddWithValue("@phone", phone?.Trim() ?? string.Empty);
+        cmd.Parameters.AddWithValue("@currentUserId", (object?)currentUserId ?? DBNull.Value);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            return;
+
+        if (reader.GetBoolean(reader.GetOrdinal("EmailExists")))
+            ModelState.AddModelError(nameof(AdminUserUpsertViewModel.Email), "Email đã được sử dụng.");
+        if (reader.GetBoolean(reader.GetOrdinal("UserPhoneExists")) || reader.GetBoolean(reader.GetOrdinal("CustomerPhoneExists")))
+            ModelState.AddModelError(nameof(AdminUserUpsertViewModel.Phone), "Số điện thoại đã được sử dụng.");
     }
 }

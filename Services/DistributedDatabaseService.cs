@@ -83,6 +83,8 @@ public static class DistributedDatabaseService
                 var url = WebApiServerConfig.BuildUrl(route);
                 using var request = await CreateGetRequestAsync(url, cancellationToken);
                 using var response = await Http.SendAsync(request, cancellationToken);
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    Session.Clear();
                 if (!response.IsSuccessStatusCode)
                     continue;
 
@@ -123,6 +125,8 @@ public static class DistributedDatabaseService
                 var url = WebApiServerConfig.BuildUrl(route);
                 using var request = await CreateGetRequestAsync(url, cancellationToken);
                 using var response = await Http.SendAsync(request, cancellationToken);
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    Session.Clear();
                 if (!response.IsSuccessStatusCode)
                     continue;
 
@@ -197,6 +201,7 @@ public static class DistributedDatabaseService
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
 
+        await Session.RestoreAsync();
         var token = Session.AccessToken;
         if (!string.IsNullOrWhiteSpace(token))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);

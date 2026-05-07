@@ -81,7 +81,7 @@ namespace RideAPI.Controllers
         }
 
         [HttpGet("nearby")]
-        [AllowAnonymous]
+        [Authorize]
         public async Task<IActionResult> Nearby(
             [FromHeader(Name = "X-User-Latitude")] double? userLatitude,
             [FromQuery] double latitude,

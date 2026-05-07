@@ -1,0 +1,16 @@
+@{
+    Layout = "~/Views/Shared/_AdminLayout.cshtml";
+    ViewData["Title"] = ViewBag.Title as string ?? "Thông báo";
+    var code = ViewBag.StatusCode as int? ?? 500;
+    var message = ViewBag.Message as string ?? "Hệ thống gặp lỗi khi xử lý yêu cầu.";
+}
+
+<div class="panel status-card">
+    <div class="status-code">@code</div>
+    <h1 class="status-title">@ViewData["Title"]</h1>
+    <p class="status-desc">@message</p>
+    <div class="form-actions" style="justify-content:center;">
+        <a class="btn btn-back" href="/admin/dashboard">Về bảng điều khiển</a>
+        <a class="btn btn-add" href="/admin/login">Đăng nhập lại</a>
+    </div>
+</div>

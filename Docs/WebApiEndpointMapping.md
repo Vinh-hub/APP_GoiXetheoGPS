@@ -1,8 +1,8 @@
 # Web API chuẩn và mapping theo màn hình
 
 ## Cấu hình base URL
-- Mặc định: `http://127.0.0.1:5000`
-- Android Emulator: tự dùng `http://10.0.2.2:5000`
+- Mặc định: `http://localhost:5136`
+- Android Emulator: tự dùng `http://10.0.2.2:5136`
 - Có thể override runtime qua `WebApiServerConfig.BaseUrl`
 
 ## Endpoint chuẩn

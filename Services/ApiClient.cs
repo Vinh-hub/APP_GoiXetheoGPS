@@ -34,6 +34,9 @@ public sealed class ApiClient
         => SendAsync<object>(HttpMethod.Post, route, body, requiresAuth, cancellationToken);
 
     async Task<T?> SendAsync<T>(HttpMethod method, string route, object? body, bool requiresAuth, CancellationToken cancellationToken)
+        => await SendAsync<T>(method, route, body, requiresAuth, cancellationToken, hasRetriedAuth: false);
+
+    async Task<T?> SendAsync<T>(HttpMethod method, string route, object? body, bool requiresAuth, CancellationToken cancellationToken, bool hasRetriedAuth)
     {
         using var request = new HttpRequestMessage(method, WebApiServerConfig.BuildUrl(route));
 
@@ -62,6 +65,12 @@ public sealed class ApiClient
         }
 
         using var responseScope = response;
+        if (requiresAuth && response.StatusCode == HttpStatusCode.Unauthorized && !hasRetriedAuth)
+        {
+            if (await TryRefreshTokenAsync(cancellationToken))
+                return await SendAsync<T>(method, route, body, requiresAuth, cancellationToken, hasRetriedAuth: true);
+        }
+
         await EnsureSuccessAsync(response, cancellationToken, requiresAuth);
 
         if (typeof(T) == typeof(object) || response.Content is null)
@@ -78,6 +87,12 @@ public sealed class ApiClient
     {
         if (requiresAuth)
         {
+            if (_session.IsTokenExpired() && !await TryRefreshTokenAsync(cancellationToken))
+            {
+                _session.Clear();
+                throw new ApiRequestException(HttpStatusCode.Unauthorized, "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+            }
+
             var token = _session.AccessToken;
             if (string.IsNullOrWhiteSpace(token))
                 throw new ApiRequestException(HttpStatusCode.Unauthorized, "Thiếu token đăng nhập.");
@@ -143,5 +158,41 @@ public sealed class ApiClient
         }
 
         return payload;
+    }
+
+    async Task<bool> TryRefreshTokenAsync(CancellationToken cancellationToken)
+    {
+        var refreshToken = _session.RefreshToken;
+        if (string.IsNullOrWhiteSpace(refreshToken))
+            return false;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, WebApiServerConfig.BuildUrl("/api/auth/refresh"));
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(new { refreshToken }),
+                Encoding.UTF8,
+                "application/json");
+
+            using var response = await _http.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return false;
+
+            var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+            var auth = JsonSerializer.Deserialize<AuthApiService.AuthResponse>(payload, JsonOptions);
+            if (auth is null)
+                return false;
+
+            auth.Token = string.IsNullOrWhiteSpace(auth.Token) ? auth.AccessToken : auth.Token;
+            if (string.IsNullOrWhiteSpace(auth.Token))
+                return false;
+
+            await _session.SaveLoginAsync(auth);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

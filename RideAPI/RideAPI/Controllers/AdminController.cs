@@ -1,26 +1,28 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using RideAPI.Models.ViewModels;
 using RideAPI.Services;
 
 namespace RideAPI.Controllers;
 
-[Authorize]
+[Authorize(Policy = "AdminOnly")]
 [Route("admin")]
 public class AdminController : Controller
 {
     private readonly DatabaseService _db;
-    private readonly IConfiguration _config;
+    private readonly PasswordHasherService _passwords;
+    private readonly JwtTokenService _jwt;
+    private readonly IWebHostEnvironment _env;
 
-    public AdminController(DatabaseService db, IConfiguration config)
+    public AdminController(DatabaseService db, PasswordHasherService passwords, JwtTokenService jwt, IWebHostEnvironment env)
     {
         _db = db;
-        _config = config;
+        _passwords = passwords;
+        _jwt = jwt;
+        _env = env;
     }
 
     [AllowAnonymous]
@@ -45,14 +47,14 @@ public class AdminController : Controller
             return View(model);
         }
 
-        var token = GenerateAdminToken(admin.Value.UserId, admin.Value.Name, admin.Value.Email, admin.Value.RegionId);
-        Response.Cookies.Append("admin_jwt", token, new CookieOptions
+        var token = _jwt.GenerateAccessToken(admin.Value.UserId, admin.Value.Name, admin.Value.Email, admin.Value.RegionId, "Admin", null, null);
+        Response.Cookies.Append("admin_jwt", token.Token, new CookieOptions
         {
             HttpOnly = true,
             IsEssential = true,
             SameSite = SameSiteMode.Lax,
-            Secure = Request.IsHttps,
-            Expires = DateTimeOffset.UtcNow.AddDays(1)
+            Secure = !_env.IsDevelopment() || Request.IsHttps,
+            Expires = token.ExpiresAtUtc
         });
 
         if (!string.IsNullOrWhiteSpace(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
@@ -142,36 +144,73 @@ public class AdminController : Controller
         return View();
     }
 
+    [AllowAnonymous]
+    [HttpGet("unauthorized")]
+    public IActionResult UnauthorizedPage()
+    {
+        Response.StatusCode = StatusCodes.Status403Forbidden;
+        ViewBag.StatusCode = 403;
+        ViewBag.Title = "Không có quyền truy cập";
+        ViewBag.Message = "Tài khoản hiện tại không có quyền truy cập chức năng này.";
+        return View("Status");
+    }
+
+    [AllowAnonymous]
+    [HttpGet("status/{code:int}")]
+    public IActionResult StatusPage(int code)
+    {
+        Response.StatusCode = code;
+        ViewBag.StatusCode = code;
+        ViewBag.Title = code switch
+        {
+            401 => "Cần đăng nhập",
+            403 => "Không có quyền truy cập",
+            404 => "Không tìm thấy trang",
+            _ => "Đã xảy ra lỗi"
+        };
+        ViewBag.Message = code switch
+        {
+            401 => "Phiên đăng nhập không hợp lệ hoặc đã hết hạn.",
+            403 => "Bạn không có quyền truy cập tài nguyên này.",
+            404 => "Trang bạn yêu cầu không tồn tại.",
+            _ => "Hệ thống gặp lỗi khi xử lý yêu cầu."
+        };
+        return View("Status");
+    }
+
     private async Task<(int UserId, string Name, string Email, int RegionId)?> FindAdminAsync(string email, string password)
     {
-        var north = await FindAdminInConnectionAsync(_db.GetConnection(20), email, password);
+        var north = await FindAdminInConnectionAsync(_db.GetConnection(20), email, password, _passwords);
         if (north is not null)
             return north;
 
-        return await FindAdminInConnectionAsync(_db.GetConnection(10), email, password);
+        return await FindAdminInConnectionAsync(_db.GetConnection(10), email, password, _passwords);
     }
 
     private static async Task<(int UserId, string Name, string Email, int RegionId)?> FindAdminInConnectionAsync(
         NpgsqlConnection conn,
         string email,
-        string password)
+        string password,
+        PasswordHasherService passwords)
     {
         await using (conn)
         {
             await conn.OpenAsync();
             const string sql = @"
-SELECT UserID, Email, COALESCE(Name, 'Admin') AS Name, COALESCE(RegionID, 2) AS RegionID,
+SELECT UserID, Email, Password, COALESCE(Name, 'Admin') AS Name, COALESCE(RegionID, 2) AS RegionID,
        CASE WHEN LOWER(IsActive::text) IN ('1','t','true') THEN TRUE ELSE FALSE END AS IsActive
 FROM Users
-WHERE Email = @email AND Password = @pwd AND Role = 'Admin'
+WHERE LOWER(Email) = LOWER(@email) AND Role = 'Admin'
 LIMIT 1";
 
             await using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@email", email);
-            cmd.Parameters.AddWithValue("@pwd", password);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
+                return null;
+
+            if (!passwords.VerifyPassword(password, reader.GetString(reader.GetOrdinal("Password"))))
                 return null;
 
             if (!reader.GetBoolean(reader.GetOrdinal("IsActive")))
@@ -184,34 +223,6 @@ LIMIT 1";
                 reader.GetInt32(reader.GetOrdinal("RegionID"))
             );
         }
-    }
-
-    private string GenerateAdminToken(int userId, string name, string email, int regionId)
-    {
-        var jwtKey = _config["Jwt:Key"] ?? "YourSuperSecretKeyForJwtAuthenticationWhichNeedsToBeLongEnough";
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-        var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Sub, userId.ToString()),
-            new(JwtRegisteredClaimNames.Name, name ?? "Admin"),
-            new(JwtRegisteredClaimNames.Email, email ?? string.Empty),
-            new("regionId", regionId.ToString()),
-            new("role", "Admin"),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        };
-
-        var expiresAt = DateTime.UtcNow.AddHours(24);
-        var token = new JwtSecurityToken(
-            issuer: _config["Jwt:Issuer"] ?? "RideAPI",
-            audience: _config["Jwt:Audience"] ?? "RideApp",
-            claims: claims,
-            expires: expiresAt,
-            signingCredentials: creds
-        );
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
     private static int ParseRegionId(string? rawRegionId)
