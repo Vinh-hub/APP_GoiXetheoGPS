@@ -207,7 +207,8 @@ app.UseStatusCodePages(async context =>
     http.Response.Redirect($"/admin/status/{http.Response.StatusCode}");
 });
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+    app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();

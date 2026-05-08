@@ -30,22 +30,30 @@ public sealed class AuthSessionService
             else
             {
                 _accessToken = value;
-                Preferences.Default.Remove(AccessTokenKey);
-                _ = SecureStorage.Default.SetAsync(AccessTokenKey, value);
+                // Persist token in Preferences for reliable restore (esp. Windows).
+                // SecureStorage is best-effort; failures shouldn't drop the token.
+                Preferences.Default.Set(AccessTokenKey, value);
+                _ = TrySetSecureAsync(AccessTokenKey, value);
             }
         }
     }
 
     public string? RefreshToken
     {
-        get => _refreshToken;
+        get => _refreshToken ?? Preferences.Default.Get<string?>(RefreshTokenKey, null);
         private set
         {
             _refreshToken = value;
             if (string.IsNullOrWhiteSpace(value))
+            {
+                Preferences.Default.Remove(RefreshTokenKey);
                 SecureStorage.Default.Remove(RefreshTokenKey);
+            }
             else
-                _ = SecureStorage.Default.SetAsync(RefreshTokenKey, value);
+            {
+                Preferences.Default.Set(RefreshTokenKey, value);
+                _ = TrySetSecureAsync(RefreshTokenKey, value);
+            }
         }
     }
 
@@ -96,16 +104,26 @@ public sealed class AuthSessionService
         if (_restored)
             return;
 
-        _accessToken = await SecureStorage.Default.GetAsync(AccessTokenKey);
-        _refreshToken = await SecureStorage.Default.GetAsync(RefreshTokenKey);
+        try
+        {
+            _accessToken = await SecureStorage.Default.GetAsync(AccessTokenKey);
+            _refreshToken = await SecureStorage.Default.GetAsync(RefreshTokenKey);
+        }
+        catch
+        {
+            // SecureStorage can fail on some platforms; fall back to Preferences.
+        }
 
         var legacyToken = Preferences.Default.Get<string?>(AccessTokenKey, null);
         if (string.IsNullOrWhiteSpace(_accessToken) && !string.IsNullOrWhiteSpace(legacyToken))
         {
             _accessToken = legacyToken;
-            await SecureStorage.Default.SetAsync(AccessTokenKey, legacyToken);
-            Preferences.Default.Remove(AccessTokenKey);
+            _ = TrySetSecureAsync(AccessTokenKey, legacyToken);
         }
+
+        var prefRefresh = Preferences.Default.Get<string?>(RefreshTokenKey, null);
+        if (string.IsNullOrWhiteSpace(_refreshToken) && !string.IsNullOrWhiteSpace(prefRefresh))
+            _refreshToken = prefRefresh;
 
         _restored = true;
         if (IsTokenExpired())
@@ -123,13 +141,14 @@ public sealed class AuthSessionService
             return;
 
         _accessToken = response.Token;
-        Preferences.Default.Remove(AccessTokenKey);
-        await SecureStorage.Default.SetAsync(AccessTokenKey, response.Token);
+        Preferences.Default.Set(AccessTokenKey, response.Token);
+        await TrySetSecureAsync(AccessTokenKey, response.Token);
 
         if (!string.IsNullOrWhiteSpace(response.RefreshToken))
         {
             _refreshToken = response.RefreshToken;
-            await SecureStorage.Default.SetAsync(RefreshTokenKey, response.RefreshToken);
+            Preferences.Default.Set(RefreshTokenKey, response.RefreshToken);
+            await TrySetSecureAsync(RefreshTokenKey, response.RefreshToken);
         }
 
         UserId = response.UserId;
@@ -215,6 +234,18 @@ public sealed class AuthSessionService
         catch
         {
             return null;
+        }
+    }
+
+    static async Task TrySetSecureAsync(string key, string value)
+    {
+        try
+        {
+            await SecureStorage.Default.SetAsync(key, value);
+        }
+        catch
+        {
+            // Best-effort: Preferences already contains the value.
         }
     }
 }

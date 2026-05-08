@@ -12,7 +12,9 @@ public static class ApiErrorHandler
         if (ex is ApiRequestException apiEx)
         {
             if (apiEx.StatusCode == HttpStatusCode.Unauthorized)
-                return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+                return string.IsNullOrWhiteSpace(apiEx.Message)
+                    ? "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+                    : apiEx.Message;
 
             return string.IsNullOrWhiteSpace(apiEx.Message)
                 ? "Không thể xử lý yêu cầu. Vui lòng thử lại."

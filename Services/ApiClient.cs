@@ -87,6 +87,8 @@ public sealed class ApiClient
     {
         if (requiresAuth)
         {
+            await _session.RestoreAsync();
+
             if (_session.IsTokenExpired() && !await TryRefreshTokenAsync(cancellationToken))
             {
                 _session.Clear();
@@ -94,6 +96,9 @@ public sealed class ApiClient
             }
 
             var token = _session.AccessToken;
+            if (string.IsNullOrWhiteSpace(token) && await TryRefreshTokenAsync(cancellationToken))
+                token = _session.AccessToken;
+
             if (string.IsNullOrWhiteSpace(token))
                 throw new ApiRequestException(HttpStatusCode.Unauthorized, "Thiếu token đăng nhập.");
 

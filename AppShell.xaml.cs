@@ -75,7 +75,8 @@ namespace APP_GoiXetheoGPS
         static bool IsAuthRoute(string target)
             => target.Contains("auth-welcome", StringComparison.OrdinalIgnoreCase)
                || target.Contains("auth-login", StringComparison.OrdinalIgnoreCase)
-               || target.Contains("auth-register", StringComparison.OrdinalIgnoreCase);
+               || target.Contains("auth-register", StringComparison.OrdinalIgnoreCase)
+               || target.Contains("auth", StringComparison.OrdinalIgnoreCase);
         public static async Task DisplaySnackbarAsync(string message)
         {
             CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();

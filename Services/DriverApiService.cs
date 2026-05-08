@@ -22,7 +22,7 @@ public sealed class DriverApiService
                     $"&longitude={longitude.ToString(CultureInfo.InvariantCulture)}" +
                     $"&radiusKm={radiusKm.ToString(CultureInfo.InvariantCulture)}&limit={limit}";
 
-        var result = await _api.GetAsync<List<NearbyDriverDto>>(route, requiresAuth: false, cancellationToken);
+        var result = await _api.GetAsync<List<NearbyDriverDto>>(route, requiresAuth: true, cancellationToken);
         if (result is null)
             return Array.Empty<NearbyDriverDto>();
 

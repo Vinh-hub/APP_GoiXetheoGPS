@@ -29,11 +29,24 @@ public partial class AuthPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        // Always refresh UI when page appears
-        MainThread.BeginInvokeOnMainThread(() =>
+        _ = RestoreAndRefreshAsync();
+    }
+
+    async Task RestoreAndRefreshAsync()
+    {
+        try
+        {
+            await _sessionService.RestoreAsync();
+        }
+        catch
+        {
+            // ignore restore failures; UI will show not logged in
+        }
+
+        await MainThread.InvokeOnMainThreadAsync(() =>
         {
             UpdateJwtStatusLabel();
-            _ = RefreshSessionSilentlyAsync();
+            SessionStatusLabel.Text = "Sẵn sàng kiểm tra phiên.";
         });
     }
 
@@ -72,21 +85,6 @@ public partial class AuthPage : ContentPage
         {
             LogoutButton.IsEnabled = true;
             LogoutButton.Text = "Đăng xuất";
-        }
-    }
-
-    async Task ValidateAndRenderSessionAsync()
-        => await ValidateAndRenderSessionAsync(showFeedback: false);
-
-    async Task RefreshSessionSilentlyAsync()
-    {
-        try
-        {
-            await ValidateAndRenderSessionAsync(showFeedback: false);
-        }
-        catch
-        {
-            SessionStatusLabel.Text = "Không thể kiểm tra phiên lúc này.";
         }
     }
 

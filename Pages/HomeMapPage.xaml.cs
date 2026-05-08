@@ -44,14 +44,12 @@ namespace APP_GoiXetheoGPS.Pages
             InitializeComponent();
             SuggestionsList.ItemsSource = new List<MapboxSuggestion>();
 
-            var services = Application.Current?.Handler?.MauiContext?.Services;
-            var session = services?.GetService<AuthSessionService>() ?? new AuthSessionService();
-            var location = services?.GetService<UserLocationService>() ?? new UserLocationService();
-            var fallbackApiClient = services?.GetService<ApiClient>() ?? new ApiClient(session, location);
-            _rideApiService = services?.GetService<RideApiService>()
-                ?? new RideApiService(fallbackApiClient);
-            _driverApiService = services?.GetService<DriverApiService>()
-                ?? new DriverApiService(fallbackApiClient);
+            // Always use DI singletons (avoid creating a second session instance).
+            var services = MauiProgram.Services
+                ?? throw new InvalidOperationException("DI container is not initialized.");
+
+            _rideApiService = services.GetRequiredService<RideApiService>();
+            _driverApiService = services.GetRequiredService<DriverApiService>();
         }
 
         private void BtnPickup_OnClicked(object? sender, EventArgs e)
