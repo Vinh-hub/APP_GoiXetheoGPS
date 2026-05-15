@@ -97,7 +97,8 @@ namespace RideAPI.Controllers
 
             limit = Math.Clamp(limit, 1, 100);
 
-            double lat = GetLatitude(userLatitude);
+            // Chọn CSDL theo vĩ độ: ưu header X-User-Latitude, sau đó vĩ độ trên query (trang admin thường không gửi header).
+            double lat = GetLatitude(userLatitude, fallbackQueryLatitude: latitude);
 
             try
             {
@@ -125,7 +126,7 @@ FROM (
            )))) AS DistanceKm
     FROM DriverLocations dl
     INNER JOIN Drivers d ON d.DriverID = dl.DriverID
-    WHERE LOWER(d.IsActive::text) IN ('1', 't', 'true')
+    WHERE d.IsActive IS TRUE
       AND dl.LocationID = (
           SELECT MAX(dl2.LocationID)
           FROM DriverLocations dl2
@@ -170,6 +171,87 @@ LIMIT @limit";
             }
         }
 
+        /// <summary>Một tài xế đang hoạt động ngẫu nhiên trong miền (CSDL theo X-User-Latitude / query), không lọc bán kính.</summary>
+        [HttpGet("random-for-booking")]
+        [Authorize]
+        public async Task<IActionResult> RandomForBooking(
+            [FromHeader(Name = "X-User-Latitude")] double? userLatitude,
+            [FromQuery] double latitude,
+            [FromQuery] double longitude)
+        {
+            if (!IsValidLatitude(latitude) || !IsValidLongitude(longitude))
+                return BadRequest(new { message = "Tham số latitude/longitude không hợp lệ." });
+
+            double lat = GetLatitude(userLatitude, fallbackQueryLatitude: latitude);
+
+            try
+            {
+                using var conn = _db.GetConnection(lat);
+                await conn.OpenAsync();
+
+                const string sql = @"
+SELECT t.DriverID,
+       t.Name,
+       t.Phone,
+       t.Status,
+       t.Latitude,
+       t.Longitude,
+       t.DistanceKm
+FROM (
+    SELECT d.DriverID,
+           d.Name,
+           d.Phone,
+           d.Status,
+           dl.Latitude,
+           dl.Longitude,
+           (6371 * ACOS(GREATEST(-1, LEAST(1,
+               COS(RADIANS(@refLat)) * COS(RADIANS(dl.Latitude)) * COS(RADIANS(dl.Longitude) - RADIANS(@refLng))
+               + SIN(RADIANS(@refLat)) * SIN(RADIANS(dl.Latitude))
+           )))) AS DistanceKm
+    FROM DriverLocations dl
+    INNER JOIN Drivers d ON d.DriverID = dl.DriverID
+    WHERE d.IsActive IS TRUE
+      AND dl.LocationID = (
+          SELECT MAX(dl2.LocationID)
+          FROM DriverLocations dl2
+          WHERE dl2.DriverID = dl.DriverID
+      )
+) AS t
+ORDER BY RANDOM()
+LIMIT 1";
+
+                await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@refLat", latitude);
+                cmd.Parameters.AddWithValue("@refLng", longitude);
+
+                var list = new List<NearbyDriverDto>();
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add(new NearbyDriverDto
+                    {
+                        DriverId = reader.GetInt32(reader.GetOrdinal("DriverID")),
+                        Name = reader.GetString(reader.GetOrdinal("Name")),
+                        Phone = reader.IsDBNull(reader.GetOrdinal("Phone")) ? "" : reader.GetString(reader.GetOrdinal("Phone")),
+                        Status = reader.IsDBNull(reader.GetOrdinal("Status")) ? "" : reader.GetString(reader.GetOrdinal("Status")),
+                        Latitude = reader.GetDouble(reader.GetOrdinal("Latitude")),
+                        Longitude = reader.GetDouble(reader.GetOrdinal("Longitude")),
+                        DistanceKm = Math.Round(reader.GetDouble(reader.GetOrdinal("DistanceKm")), 3)
+                    });
+                }
+
+                return Ok(list);
+            }
+            catch (NpgsqlException ex)
+            {
+                return StatusCode(503, new
+                {
+                    message = "Lỗi kết nối CSDL khu vực.",
+                    detail = _env.IsDevelopment() ? ex.Message : null
+                });
+            }
+        }
+
         private int? GetDriverIdFromClaims()
         {
             // JwtBearer MapInboundClaims mặc định: claim "role" trong token → ClaimTypes.Role.
@@ -182,7 +264,7 @@ LIMIT @limit";
             return int.TryParse(raw, out var id) ? id : null;
         }
 
-        private double GetLatitude(double? userLatitude)
+        private double GetLatitude(double? userLatitude, double? fallbackQueryLatitude = null)
         {
             if (userLatitude is double latFromParam && IsValidLatitude(latFromParam))
                 return latFromParam;
@@ -192,6 +274,9 @@ LIMIT @limit";
                     System.Globalization.CultureInfo.InvariantCulture, out var lat) &&
                 IsValidLatitude(lat))
                 return lat;
+
+            if (fallbackQueryLatitude is double q && IsValidLatitude(q))
+                return q;
 
             return 10.8;
         }

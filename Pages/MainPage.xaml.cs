@@ -18,25 +18,25 @@ namespace APP_GoiXetheoGPS.Pages
         protected override void OnAppearing()
         {
             base.OnAppearing();
-            UpdateSelectedRegionLabel();
+            _ = RefreshRegionLabelAsync();
         }
 
         private void NorthRegionButton_OnClicked(object? sender, EventArgs e)
         {
             _locationService.SetPreferredRegion("Hà Nội (North)", 21.0285);
-            UpdateSelectedRegionLabel();
+            _ = RefreshRegionLabelAsync();
         }
 
         private void SouthRegionButton_OnClicked(object? sender, EventArgs e)
         {
             _locationService.SetPreferredRegion("TP.HCM (South)", 10.8231);
-            UpdateSelectedRegionLabel();
+            _ = RefreshRegionLabelAsync();
         }
 
         private void UseGpsRegionButton_OnClicked(object? sender, EventArgs e)
         {
             _locationService.ClearPreferredRegion();
-            UpdateSelectedRegionLabel();
+            _ = RefreshRegionLabelAsync();
         }
 
         private async void BookTripButton_OnClicked(object? sender, EventArgs e)
@@ -49,13 +49,37 @@ namespace APP_GoiXetheoGPS.Pages
             await Shell.Current.GoToAsync("//trips");
         }
 
-        private void UpdateSelectedRegionLabel()
+        /// <summary>
+        /// Cập nhật nhãn miền: nếu đã chọn Hà Nội/TP.HCM thì hiện tên; nếu "Theo GPS" thì suy miền từ vĩ độ (cùng ngưỡng ≥16° với API).
+        /// </summary>
+        async Task RefreshRegionLabelAsync()
         {
-            var selectedName = _locationService.GetPreferredRegionName();
-            SelectedRegionLabel.Text = string.IsNullOrWhiteSpace(selectedName)
-                ? "Đang dùng: Theo GPS"
-                : $"Đang dùng: {selectedName}";
-        }
+            try
+            {
+                var selectedName = _locationService.GetPreferredRegionName();
+                if (!string.IsNullOrWhiteSpace(selectedName))
+                {
+                    SelectedRegionLabel.Text = $"Đang dùng: {selectedName}";
+                    return;
+                }
 
+                SelectedRegionLabel.Text = "Đang dùng: Theo GPS — đang lấy vị trí…";
+                var lat = await _locationService.GetCurrentLatitudeAsync();
+                if (lat is double la)
+                {
+                    const double northThresholdDeg = 16d;
+                    var region = la >= northThresholdDeg ? "Miền Bắc" : "Miền Nam";
+                    SelectedRegionLabel.Text = $"Đang dùng: Theo GPS — {region} (vĩ độ ~{la:F2}°)";
+                    return;
+                }
+
+                SelectedRegionLabel.Text =
+                    "Đang dùng: Theo GPS — chưa có vĩ độ (bật quyền vị trí hoặc chọn Hà Nội / TP.HCM).";
+            }
+            catch
+            {
+                SelectedRegionLabel.Text = "Đang dùng: Theo GPS — không đọc được vị trí.";
+            }
+        }
     }
 }

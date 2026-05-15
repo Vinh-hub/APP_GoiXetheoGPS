@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 
 namespace APP_GoiXetheoGPS.Services;
 
@@ -27,6 +28,19 @@ public sealed class DriverApiService
             return Array.Empty<NearbyDriverDto>();
 
         return result;
+    }
+
+    /// <summary>Chọn một tài xế đang hoạt động ngẫu nhiên trong CSDL miền (theo X-User-Latitude / query), không lọc theo bán kính.</summary>
+    public async Task<NearbyDriverDto?> GetRandomDriverForBookingAsync(
+        double latitude,
+        double longitude,
+        CancellationToken cancellationToken = default)
+    {
+        var route = $"/api/drivers/random-for-booking?latitude={latitude.ToString(CultureInfo.InvariantCulture)}" +
+                    $"&longitude={longitude.ToString(CultureInfo.InvariantCulture)}";
+
+        var list = await _api.GetAsync<List<NearbyDriverDto>>(route, requiresAuth: true, cancellationToken);
+        return list?.FirstOrDefault();
     }
 
     public Task UpdateLocationAsync(double latitude, double longitude, CancellationToken cancellationToken = default)

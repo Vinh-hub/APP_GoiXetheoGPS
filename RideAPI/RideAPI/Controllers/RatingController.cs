@@ -62,7 +62,7 @@ namespace RideAPI.Controllers
             }
             catch (Exception ex) when (ex.Message == "MASTER_DOWN_CANNOT_WRITE")
             {
-                return StatusCode(503, new { error = "Đánh giá tạm thời không khả dụng (hệ thống chỉ đọc)" });
+                return StatusCode(503, new { error = "Đánh giá tạm thời không khả dụng: không kết nối được PostgreSQL primary (master tắt/sập)." });
             }
             catch (Exception ex) when (ex.Message == "INVALID_RATING")
             {

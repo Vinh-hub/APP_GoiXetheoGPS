@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS Users (
     Phone      VARCHAR(20),
     RegionID   INT REFERENCES Regions(RegionID),
     IsActive   BOOLEAN NOT NULL DEFAULT TRUE,
+    IsDeleted  BOOLEAN NOT NULL DEFAULT FALSE,
     CreatedAt  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CHECK ((Role='Admin' AND CustomerID IS NULL AND DriverID IS NULL) OR
            (Role='Customer' AND CustomerID IS NOT NULL AND DriverID IS NULL) OR

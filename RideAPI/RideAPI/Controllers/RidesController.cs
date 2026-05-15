@@ -22,7 +22,7 @@ namespace RideAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> BookRide([FromBody] BookRideRequest request)
         {
-            var region = LocationRoutingService.ResolveRegion(request.StartLat, request.Province);
+            var region = ResolveRegionFromClaims(request.StartLat, request.Province);
 
             var userIdClaim = User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
@@ -53,7 +53,7 @@ namespace RideAPI.Controllers
             }
             catch (InvalidOperationException ex) when (ex.Message == "MASTER_DOWN_CANNOT_WRITE")
             {
-                return StatusCode(503, new { error = "Hệ thống đang ở chế độ chỉ đọc, không thể đặt chuyến" });
+                return StatusCode(503, new { error = "Không đặt được chuyến: không kết nối được PostgreSQL primary của miền này (master tắt/sập hoặc chưa bật Docker). Ghi bắt buộc qua primary, không ghi qua replica." });
             }
             catch (Exception ex)
             {
@@ -64,7 +64,7 @@ namespace RideAPI.Controllers
         [HttpGet("history")]
         public async Task<IActionResult> GetHistory([FromQuery] double? latitude, [FromQuery] string? province)
         {
-            var region = LocationRoutingService.ResolveRegion(latitude, province);
+            var region = ResolveRegionFromClaims(latitude, province);
 
             var userIdClaim = User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
@@ -91,6 +91,15 @@ namespace RideAPI.Controllers
             {
                 return StatusCode(500, new { error = "Lỗi khi lấy lịch sử: " + ex.Message });
             }
+        }
+
+        private string ResolveRegionFromClaims(double? latitude, string? province)
+        {
+            var regionIdRaw = User.FindFirst("regionId")?.Value;
+            if (int.TryParse(regionIdRaw, out var regionId))
+                return regionId == 1 ? "NORTH" : "SOUTH";
+
+            return LocationRoutingService.ResolveRegion(latitude, province);
         }
     }
 

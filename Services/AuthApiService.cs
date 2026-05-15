@@ -4,18 +4,23 @@ public sealed class AuthApiService
 {
     readonly ApiClient _api;
     readonly AuthSessionService _session;
+    readonly UserLocationService _location;
 
-    public AuthApiService(ApiClient api, AuthSessionService session)
+    public AuthApiService(ApiClient api, AuthSessionService session, UserLocationService location)
     {
         _api = api;
         _session = session;
+        _location = location;
     }
 
     public async Task<AuthResponse?> LoginAsync(string email, string password, CancellationToken cancellationToken = default)
     {
+        // Ưu tiên vùng người dùng chọn trên app (TP.HCM / Hà Nội) — GPS emulator thường sai vĩ độ nên không được ghi đè.
+        var latitude = _location.GetPreferredLatitude() ?? await _location.GetDeviceGpsLatitudeAsync(cancellationToken);
+        var province = _location.GetPreferredRegionName();
         var response = await _api.PostAsync<LoginRequest, AuthResponse>(
             "/api/auth/login",
-            new LoginRequest(email, password),
+            new LoginRequest(email, password, latitude, province),
             requiresAuth: false,
             cancellationToken);
 
@@ -30,9 +35,13 @@ public sealed class AuthApiService
 
     public async Task<AuthResponse?> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
+        var latitude = _location.GetPreferredLatitude() ?? await _location.GetDeviceGpsLatitudeAsync(cancellationToken);
+        var province = _location.GetPreferredRegionName();
+        var body = request with { Latitude = latitude, Province = province };
+
         var response = await _api.PostAsync<RegisterRequest, AuthResponse>(
             "/api/auth/register",
-            request,
+            body,
             requiresAuth: false,
             cancellationToken);
 
@@ -112,9 +121,15 @@ public sealed class AuthApiService
         return response;
     }
 
-    public sealed record LoginRequest(string Email, string Password);
+    public sealed record LoginRequest(string Email, string Password, double? Latitude, string? Province);
 
-    public sealed record RegisterRequest(string Name, string Phone, string Email, string Password);
+    public sealed record RegisterRequest(
+        string Name,
+        string Phone,
+        string Email,
+        string Password,
+        double? Latitude = null,
+        string? Province = null);
 
     public sealed record RefreshRequest(string RefreshToken);
 

@@ -15,7 +15,7 @@ public class ApiRequestException : Exception
 
 public sealed class ApiReadOnlyException : ApiRequestException
 {
-    public const string DefaultUserMessage = "Hệ thống đang ở chế độ chỉ đọc. Vui lòng thử lại sau.";
+    public const string DefaultUserMessage = "Không ghi được dữ liệu: không mở được kết nối tới PostgreSQL primary (master có thể đang tắt). Thử lại sau khi bật container master.";
 
     public ApiReadOnlyException(string? message = null)
         : base(HttpStatusCode.ServiceUnavailable, string.IsNullOrWhiteSpace(message) ? DefaultUserMessage : message)

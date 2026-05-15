@@ -56,6 +56,8 @@ CHECK (
     (Role = 'Driver' AND DriverID IS NOT NULL AND CustomerID IS NULL)
 );
 
+ALTER TABLE Users ADD COLUMN IF NOT EXISTS IsDeleted BOOLEAN NOT NULL DEFAULT FALSE;
+
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email_lower ON Users (LOWER(Email));
 CREATE UNIQUE INDEX IF NOT EXISTS ux_users_phone_nonempty ON Users (Phone) WHERE Phone IS NOT NULL AND BTRIM(Phone) <> '';
 CREATE UNIQUE INDEX IF NOT EXISTS ux_customers_email_lower_nonempty ON Customers (LOWER(Email)) WHERE Email IS NOT NULL AND BTRIM(Email) <> '';

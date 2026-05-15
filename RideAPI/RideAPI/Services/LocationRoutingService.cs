@@ -76,6 +76,18 @@ public static class LocationRoutingService
         if (SouthLocations.Contains(normalized))
             return "SOUTH";
 
+        // Nhãn UI (ví dụ "TP.HCM (South)", "Hà Nội (North)") — không khớp từ khóa một dòng ở trên.
+        if (normalized.Contains("south", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("hcm", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("saigon", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("sai gon", StringComparison.OrdinalIgnoreCase))
+            return "SOUTH";
+
+        if (normalized.Contains("north", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("ha noi", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("hanoi", StringComparison.OrdinalIgnoreCase))
+            return "NORTH";
+
         return null;
     }
 

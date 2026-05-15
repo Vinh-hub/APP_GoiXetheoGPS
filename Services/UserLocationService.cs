@@ -32,6 +32,15 @@ public sealed class UserLocationService
             if (permission != PermissionStatus.Granted)
                 return null;
 
+            // Ưu tiên fix mới: LastKnown trên emulator thường là tọa độ cũ dù đã đổi vị trí trong Extended Controls.
+            var request = new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(8));
+            var current = await Geolocation.GetLocationAsync(request, cancellationToken);
+            if (current is not null && IsValidLatitude(current.Latitude))
+            {
+                Cache(current.Latitude);
+                return current.Latitude;
+            }
+
             var lastKnown = await Geolocation.GetLastKnownLocationAsync();
             if (lastKnown is not null && IsValidLatitude(lastKnown.Latitude))
             {
@@ -39,12 +48,46 @@ public sealed class UserLocationService
                 return lastKnown.Latitude;
             }
 
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Chỉ lấy vĩ độ từ GPS (sau khi xin quyền). Dùng làm fallback khi người dùng chưa chọn vùng ưu tiên trên màn chính.
+    /// </summary>
+    public async Task<double?> GetDeviceGpsLatitudeAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var permission = await Permissions.CheckStatusAsync<Permissions.LocationWhenInUse>();
+            if (permission != PermissionStatus.Granted)
+                permission = await Permissions.RequestAsync<Permissions.LocationWhenInUse>();
+
+            if (permission != PermissionStatus.Granted)
+                return null;
+
             var request = new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(8));
             var current = await Geolocation.GetLocationAsync(request, cancellationToken);
             if (current is not null && IsValidLatitude(current.Latitude))
             {
                 Cache(current.Latitude);
                 return current.Latitude;
+            }
+
+            var lastKnown = await Geolocation.GetLastKnownLocationAsync();
+            if (lastKnown is not null && IsValidLatitude(lastKnown.Latitude))
+            {
+                Cache(lastKnown.Latitude);
+                return lastKnown.Latitude;
             }
 
             return null;
@@ -68,6 +111,19 @@ public sealed class UserLocationService
         _cachedAt = DateTime.UtcNow;
     }
 
+    /// <summary>Xóa vĩ độ đệm GPS (vẫn giữ vùng Hà Nội/TP.HCM nếu người dùng đã chọn).</summary>
+    public void InvalidateGpsCache()
+    {
+        _cachedLatitude = null;
+    }
+
+    /// <summary>Mỗi lần mở app: bỏ cache và đọc GPS thiết bị một lần (nếu có quyền).</summary>
+    public async Task RefreshGpsOnAppLaunchAsync(CancellationToken cancellationToken = default)
+    {
+        InvalidateGpsCache();
+        await GetDeviceGpsLatitudeAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public void SetPreferredRegion(string regionName, double latitude)
     {
         if (!IsValidLatitude(latitude))
@@ -82,6 +138,7 @@ public sealed class UserLocationService
     {
         Preferences.Default.Remove(PreferredRegionLatitudeKey);
         Preferences.Default.Remove(PreferredRegionNameKey);
+        InvalidateGpsCache();
     }
 
     public double? GetPreferredLatitude()

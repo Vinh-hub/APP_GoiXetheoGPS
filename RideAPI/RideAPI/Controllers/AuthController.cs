@@ -47,11 +47,8 @@ namespace RideAPI.Controllers
             if (!IsValidEmail(email) || string.IsNullOrWhiteSpace(password))
                 return BadRequest(new { message = "Email và mật khẩu không được để trống." });
 
-            var region = LocationRoutingService.ResolveRegion(request.Latitude, request.Province);
             try
             {
-                using var conn = await _db.GetConnectionAsync(region, isWrite: false);
-
                 const string sql = @"
                     SELECT u.UserID, u.Email, u.Role, u.CustomerID, u.DriverID,
                            COALESCE(c.FullName, d.Name, u.Name) AS DisplayName,
@@ -63,55 +60,106 @@ namespace RideAPI.Controllers
                     LEFT JOIN Customers c ON c.CustomerID = u.CustomerID
                     LEFT JOIN Drivers d ON d.DriverID = u.DriverID
                     WHERE LOWER(u.Email) = LOWER(@email)
+                      AND NOT COALESCE(u.IsDeleted, FALSE)
                     LIMIT 1";
 
-                await using var cmd = new NpgsqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@email", email);
-                cmd.Parameters.AddWithValue("@regionId", region == "NORTH" ? 1 : 2);
-                await using var reader = await cmd.ExecuteReaderAsync();
+                AuthUser? authenticated = null;
+                string? authenticatedShard = null;
+                var wrongPasswordOnAnyShard = false;
+                var shardConnectionFailed = false;
 
-                if (!await reader.ReadAsync())
-                    return Unauthorized(new { message = "Sai email hoặc mật khẩu." });
+                foreach (var shard in new[] { "NORTH", "SOUTH" })
+                {
+                    try
+                    {
+                        await using var conn = await _db.GetConnectionAsync(shard, isWrite: false);
+                        await using var cmd = new NpgsqlCommand(sql, conn);
+                        cmd.Parameters.AddWithValue("@email", email);
+                        cmd.Parameters.AddWithValue("@regionId", shard == "NORTH" ? 1 : 2);
+                        await using var reader = await cmd.ExecuteReaderAsync();
+                        if (!await reader.ReadAsync())
+                            continue;
 
-                var storedPassword = reader.GetString(reader.GetOrdinal("Password"));
-                if (!_passwords.VerifyPassword(password, storedPassword))
-                    return Unauthorized(new { message = "Sai email hoặc mật khẩu." });
+                        var storedPassword = reader.GetString(reader.GetOrdinal("Password"));
+                        if (!_passwords.VerifyPassword(password, storedPassword))
+                        {
+                            wrongPasswordOnAnyShard = true;
+                            continue;
+                        }
 
-                if (!reader.IsDBNull(reader.GetOrdinal("IsActive")) && !reader.GetBoolean(reader.GetOrdinal("IsActive")))
-                    return Unauthorized(new { message = "Tài khoản đã bị khóa." });
+                        if (!reader.IsDBNull(reader.GetOrdinal("IsActive")) && !reader.GetBoolean(reader.GetOrdinal("IsActive")))
+                            return Unauthorized(new { message = "Tài khoản đã bị khóa." });
 
-                var userId = reader.GetInt32(reader.GetOrdinal("UserID"));
-                var accountEmail = reader.GetString(reader.GetOrdinal("Email"));
-                var role = reader.GetString(reader.GetOrdinal("Role"));
-                var displayName = reader.IsDBNull(reader.GetOrdinal("DisplayName")) ? string.Empty : reader.GetString(reader.GetOrdinal("DisplayName"));
-                var displayPhone = reader.IsDBNull(reader.GetOrdinal("DisplayPhone")) ? string.Empty : reader.GetString(reader.GetOrdinal("DisplayPhone"));
-                int? customerId = reader.IsDBNull(reader.GetOrdinal("CustomerID")) ? null : reader.GetInt32(reader.GetOrdinal("CustomerID"));
-                int? driverId = reader.IsDBNull(reader.GetOrdinal("DriverID")) ? null : reader.GetInt32(reader.GetOrdinal("DriverID"));
-                int regionId = reader.GetInt32(reader.GetOrdinal("RegionID"));
+                        authenticated = ReadAuthUserFromLoginReader(reader);
+                        authenticatedShard = shard;
+                        break;
+                    }
+                    catch (NpgsqlException)
+                    {
+                        shardConnectionFailed = true;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        shardConnectionFailed = true;
+                    }
+                }
 
-                var token = _jwt.GenerateAccessToken(userId, displayName, accountEmail, regionId, role, customerId, driverId);
-                var refreshToken = await _refreshTokens.CreateAsync(region, userId, regionId, role, token.JwtId);
+                if (authenticated is null)
+                {
+                    if (wrongPasswordOnAnyShard)
+                        return Unauthorized(new { message = "Mật khẩu không đúng." });
+
+                    if (shardConnectionFailed)
+                        return StatusCode(503, new { message = "Không kết nối được CSDL phân tán. Thử lại sau." });
+
+                    return Unauthorized(new { message = "Không tìm thấy tài khoản với email này." });
+                }
+
+                var u = authenticated.Value;
+                var token = _jwt.GenerateAccessToken(u.UserId, u.Name, u.Email, u.RegionId, u.Role, u.CustomerId, u.DriverId);
+
+                // Đăng nhập đọc được từ replica (isWrite:false) nhưng refresh token cần ghi primary — khi master sập vẫn cấp access token.
+                RefreshTokenResult? refresh = null;
+                try
+                {
+                    refresh = await _refreshTokens.CreateAsync(authenticatedShard!, u.UserId, u.RegionId, u.Role, token.JwtId);
+                }
+                catch (NpgsqlException)
+                {
+                    // Bỏ qua: phiên chỉ dùng access token tới khi hết hạn.
+                }
+                catch (InvalidOperationException)
+                {
+                    // Master miền sập — không ghi được refresh token.
+                }
 
                 return Ok(new
                 {
-                    message = "Đăng nhập thành công.",
+                    message = refresh is null
+                        ? "Đăng nhập thành công (master miền đang sập — không lưu refresh token; hãy đăng nhập lại khi hết phiên)."
+                        : "Đăng nhập thành công.",
                     token = token.Token,
                     accessToken = token.Token,
                     expiresAtUtc = token.ExpiresAtUtc,
-                    refreshToken = refreshToken.Token,
-                    refreshTokenExpiresAtUtc = refreshToken.ExpiresAtUtc,
-                    userId,
-                    role,
-                    customerId,
-                    driverId,
-                    name = displayName,
-                    phone = displayPhone,
-                    email = accountEmail,
-                    regionId,
-                    region
+                    refreshToken = refresh?.Token,
+                    refreshTokenExpiresAtUtc = refresh?.ExpiresAtUtc,
+                    sessionWithoutRefresh = refresh is null,
+                    userId = u.UserId,
+                    role = u.Role,
+                    customerId = u.CustomerId,
+                    driverId = u.DriverId,
+                    name = u.Name,
+                    phone = u.Phone,
+                    email = u.Email,
+                    regionId = u.RegionId,
+                    region = authenticatedShard
                 });
             }
             catch (NpgsqlException ex)
+            {
+                return StatusCode(503, new { message = "Khu vực đang bảo trì.", detail = _env.IsDevelopment() ? ex.Message : null });
+            }
+            catch (InvalidOperationException ex)
             {
                 return StatusCode(503, new { message = "Khu vực đang bảo trì.", detail = _env.IsDevelopment() ? ex.Message : null });
             }
@@ -309,10 +357,29 @@ SELECT
                 ? DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime
                 : DateTime.UtcNow.AddMinutes(5);
 
-            if (!string.IsNullOrWhiteSpace(request?.RefreshToken))
-                await _refreshTokens.RevokeAsync(region, request.RefreshToken);
-            await _refreshTokens.RevokeJwtAsync(region, jwtId, userId, expiresAtUtc);
-            return Ok(new { message = "Đăng xuất thành công." });
+            var serverRevokeOk = true;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(request?.RefreshToken))
+                    await _refreshTokens.RevokeAsync(region, request.RefreshToken);
+                await _refreshTokens.RevokeJwtAsync(region, jwtId, userId, expiresAtUtc);
+            }
+            catch (NpgsqlException)
+            {
+                serverRevokeOk = false;
+            }
+            catch (InvalidOperationException)
+            {
+                serverRevokeOk = false;
+            }
+
+            return Ok(new
+            {
+                message = serverRevokeOk
+                    ? "Đăng xuất thành công."
+                    : "Đăng xuất thành công (CSDL master đang sập — token đã xóa phía client; đăng nhập lại khi hệ thống ổn định).",
+                serverRevokeOk
+            });
         }
 
         private async Task<(string Region, StoredRefreshToken Token)?> FindRefreshTokenAsync(string preferredRegion, string refreshToken)
@@ -340,6 +407,7 @@ FROM Users u
 LEFT JOIN Customers c ON c.CustomerID = u.CustomerID
 LEFT JOIN Drivers d ON d.DriverID = u.DriverID
 WHERE u.UserID = @userId
+  AND NOT COALESCE(u.IsDeleted, FALSE)
 LIMIT 1";
 
             await using var cmd = new NpgsqlCommand(sql, conn);
@@ -359,6 +427,20 @@ LIMIT 1";
                 reader.GetString(reader.GetOrdinal("DisplayPhone")),
                 reader.GetInt32(reader.GetOrdinal("RegionID")),
                 reader.GetBoolean(reader.GetOrdinal("IsActive")));
+        }
+
+        private static AuthUser ReadAuthUserFromLoginReader(NpgsqlDataReader reader)
+        {
+            return new AuthUser(
+                reader.GetInt32(reader.GetOrdinal("UserID")),
+                reader.GetString(reader.GetOrdinal("Email")),
+                reader.GetString(reader.GetOrdinal("Role")),
+                reader.IsDBNull(reader.GetOrdinal("CustomerID")) ? null : reader.GetInt32(reader.GetOrdinal("CustomerID")),
+                reader.IsDBNull(reader.GetOrdinal("DriverID")) ? null : reader.GetInt32(reader.GetOrdinal("DriverID")),
+                reader.IsDBNull(reader.GetOrdinal("DisplayName")) ? string.Empty : reader.GetString(reader.GetOrdinal("DisplayName")),
+                reader.IsDBNull(reader.GetOrdinal("DisplayPhone")) ? string.Empty : reader.GetString(reader.GetOrdinal("DisplayPhone")),
+                reader.GetInt32(reader.GetOrdinal("RegionID")),
+                !reader.IsDBNull(reader.GetOrdinal("IsActive")) && reader.GetBoolean(reader.GetOrdinal("IsActive")));
         }
 
         private static string? ValidateRegister(string name, string email, string phone, string password)

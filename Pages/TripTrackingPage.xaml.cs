@@ -15,7 +15,8 @@ public partial class TripTrackingPage : ContentPage
         base.OnAppearing();
         try
         {
-            TripsCollection.ItemsSource = await TripDataStore.GetGroupedByMonthAsync(forceRefresh: true);
+            var grouped = await TripDataStore.GetGroupedByMonthAsync(forceRefresh: true);
+            await MainThread.InvokeOnMainThreadAsync(() => TripsCollection.ItemsSource = grouped);
         }
         catch (Exception ex)
         {

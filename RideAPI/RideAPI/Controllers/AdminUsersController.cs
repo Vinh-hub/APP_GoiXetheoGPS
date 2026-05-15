@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using NpgsqlTypes;
 using RideAPI.Models.ViewModels;
 using RideAPI.Services;
 
@@ -38,7 +39,7 @@ SELECT UserID, Email, Role, CustomerID, DriverID, COALESCE(Name, '') AS Name, CO
        CASE WHEN LOWER(IsActive::text) IN ('1','t','true') THEN TRUE ELSE FALSE END AS IsActive,
        RegionID
 FROM Users
-WHERE 1=1";
+WHERE NOT COALESCE(IsDeleted, FALSE)";
 
         if (!string.IsNullOrWhiteSpace(keyword))
             sql += " AND (LOWER(Email) LIKE @keyword OR LOWER(COALESCE(Name, '')) LIKE @keyword OR LOWER(COALESCE(Phone, '')) LIKE @keyword)";
@@ -119,14 +120,22 @@ WHERE 1=1";
         await conn.OpenAsync();
 
         await ValidateDuplicatesAsync(conn, model.Email, model.Phone, currentUserId: null);
+        await ValidateRoleEntityExistsAsync(conn, model);
         if (!ModelState.IsValid)
             return View(model);
+
+        await using var tx = await conn.BeginTransactionAsync();
+        if (string.Equals(model.Role, "Customer", StringComparison.OrdinalIgnoreCase)
+            && (!model.CustomerId.HasValue || model.CustomerId.Value <= 0))
+        {
+            model.CustomerId = await CreateCustomerRecordAsync(conn, tx, model);
+        }
 
         const string sql = @"
 INSERT INTO Users (Email, Password, Role, CustomerID, DriverID, Name, Phone, RegionID, IsActive)
 VALUES (@email, @password, @role, @customerId, @driverId, @name, @phone, @regionId, @isActive)";
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var cmd = new NpgsqlCommand(sql, conn, tx);
         cmd.Parameters.AddWithValue("@email", model.Email.Trim());
         cmd.Parameters.AddWithValue("@password", model.Password);
         cmd.Parameters.AddWithValue("@role", model.Role.Trim());
@@ -140,9 +149,11 @@ VALUES (@email, @password, @role, @customerId, @driverId, @name, @phone, @region
         try
         {
             await cmd.ExecuteNonQueryAsync();
+            await tx.CommitAsync();
         }
         catch (PostgresException ex)
         {
+            await tx.RollbackAsync();
             ModelState.AddModelError(string.Empty, $"Không thể thêm user: {ex.MessageText}");
             return View(model);
         }
@@ -165,7 +176,8 @@ SELECT UserID, Email, Role, CustomerID, DriverID, COALESCE(Name,'') AS Name, COA
        CASE WHEN LOWER(IsActive::text) IN ('1','t','true') THEN TRUE ELSE FALSE END AS IsActive,
        COALESCE(RegionID, @regionId) AS RegionID
 FROM Users
-WHERE UserID = @id";
+WHERE UserID = @id
+  AND NOT COALESCE(IsDeleted, FALSE)";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@id", id);
@@ -216,8 +228,16 @@ WHERE UserID = @id";
         await conn.OpenAsync();
 
         await ValidateDuplicatesAsync(conn, model.Email, model.Phone, currentUserId: id);
+        await ValidateRoleEntityExistsAsync(conn, model);
         if (!ModelState.IsValid)
             return View(model);
+
+        await using var tx = await conn.BeginTransactionAsync();
+        if (string.Equals(model.Role, "Customer", StringComparison.OrdinalIgnoreCase)
+            && (!model.CustomerId.HasValue || model.CustomerId.Value <= 0))
+        {
+            model.CustomerId = await CreateCustomerRecordAsync(conn, tx, model);
+        }
 
         const string sql = @"
 UPDATE Users
@@ -230,9 +250,10 @@ SET Email = @email,
     Phone = @phone,
     RegionID = @regionId,
     IsActive = @isActive
-WHERE UserID = @id";
+WHERE UserID = @id
+  AND NOT COALESCE(IsDeleted, FALSE)";
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var cmd = new NpgsqlCommand(sql, conn, tx);
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@email", model.Email.Trim());
         cmd.Parameters.AddWithValue("@password", model.Password ?? string.Empty);
@@ -247,9 +268,11 @@ WHERE UserID = @id";
         try
         {
             await cmd.ExecuteNonQueryAsync();
+            await tx.CommitAsync();
         }
         catch (PostgresException ex)
         {
+            await tx.RollbackAsync();
             ModelState.AddModelError(string.Empty, $"Không thể cập nhật user: {ex.MessageText}");
             return View(model);
         }
@@ -271,11 +294,27 @@ WHERE UserID = @id";
         await using var conn = _db.GetConnection(regionId == 1 ? 20 : 10);
         await conn.OpenAsync();
 
-        const string sql = "DELETE FROM Users WHERE UserID = @id";
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("@id", id);
-        await cmd.ExecuteNonQueryAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+        try
+        {
+            var updated = await SoftDeleteUserAsync(conn, tx, id);
+            if (!updated)
+            {
+                await tx.RollbackAsync();
+                TempData["Error"] = "Không tìm thấy user hoặc tài khoản đã được gỡ trước đó.";
+                return RedirectToAction(nameof(Index));
+            }
 
+            await tx.CommitAsync();
+        }
+        catch (PostgresException ex)
+        {
+            await tx.RollbackAsync();
+            TempData["Error"] = $"Không thể gỡ user: {ex.MessageText}";
+            return RedirectToAction(nameof(Index));
+        }
+
+        TempData["Message"] = "Đã gỡ tài khoản. Lịch sử chuyến vẫn tra cứu theo UserID tại trang Chi tiết chuyến.";
         return RedirectToAction(nameof(Index));
     }
 
@@ -299,7 +338,8 @@ SET IsActive = CASE
     WHEN LOWER(IsActive::text) IN ('1','t','true') THEN FALSE
     ELSE TRUE
 END
-WHERE UserID = @id";
+WHERE UserID = @id
+  AND NOT COALESCE(IsDeleted, FALSE)";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@id", id);
@@ -349,13 +389,13 @@ WHERE UserID = @id";
         if (role == "Customer")
         {
             model.DriverId = null;
-            if (!model.CustomerId.HasValue)
-                ModelState.AddModelError(nameof(model.CustomerId), "CustomerId là bắt buộc cho role Customer.");
+            if (model.CustomerId.HasValue && model.CustomerId.Value <= 0)
+                ModelState.AddModelError(nameof(model.CustomerId), "CustomerId phải lớn hơn 0 nếu được nhập.");
             return;
         }
 
         model.CustomerId = null;
-        if (!model.DriverId.HasValue)
+        if (!model.DriverId.HasValue || model.DriverId.Value <= 0)
             ModelState.AddModelError(nameof(model.DriverId), "DriverId là bắt buộc cho role Driver.");
     }
 
@@ -374,12 +414,14 @@ SELECT
     EXISTS (
         SELECT 1 FROM Users
         WHERE LOWER(Email) = LOWER(@email)
+          AND NOT COALESCE(IsDeleted, FALSE)
           AND (@currentUserId IS NULL OR UserID <> @currentUserId)
     ) AS EmailExists,
     EXISTS (
         SELECT 1 FROM Users
         WHERE Phone = @phone
           AND BTRIM(COALESCE(Phone, '')) <> ''
+          AND NOT COALESCE(IsDeleted, FALSE)
           AND (@currentUserId IS NULL OR UserID <> @currentUserId)
     ) AS UserPhoneExists,
     EXISTS (
@@ -391,7 +433,7 @@ SELECT
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@email", email.Trim());
         cmd.Parameters.AddWithValue("@phone", phone?.Trim() ?? string.Empty);
-        cmd.Parameters.AddWithValue("@currentUserId", (object?)currentUserId ?? DBNull.Value);
+        cmd.Parameters.Add("@currentUserId", NpgsqlDbType.Integer).Value = (object?)currentUserId ?? DBNull.Value;
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return;
@@ -400,5 +442,72 @@ SELECT
             ModelState.AddModelError(nameof(AdminUserUpsertViewModel.Email), "Email đã được sử dụng.");
         if (reader.GetBoolean(reader.GetOrdinal("UserPhoneExists")) || reader.GetBoolean(reader.GetOrdinal("CustomerPhoneExists")))
             ModelState.AddModelError(nameof(AdminUserUpsertViewModel.Phone), "Số điện thoại đã được sử dụng.");
+    }
+
+    private async Task ValidateRoleEntityExistsAsync(NpgsqlConnection conn, AdminUserUpsertViewModel model)
+    {
+        var role = (model.Role ?? string.Empty).Trim();
+        if (role == "Customer" && model.CustomerId.HasValue && model.CustomerId.Value > 0)
+        {
+            await using var cmd = new NpgsqlCommand("SELECT 1 FROM Customers WHERE CustomerID = @id LIMIT 1", conn);
+            cmd.Parameters.AddWithValue("@id", model.CustomerId.Value);
+            var exists = await cmd.ExecuteScalarAsync();
+            if (exists is null)
+                ModelState.AddModelError(nameof(AdminUserUpsertViewModel.CustomerId), "CustomerId không tồn tại trong bảng Customers.");
+        }
+
+        if (role == "Driver" && model.DriverId.HasValue && model.DriverId.Value > 0)
+        {
+            await using var cmd = new NpgsqlCommand("SELECT 1 FROM Drivers WHERE DriverID = @id LIMIT 1", conn);
+            cmd.Parameters.AddWithValue("@id", model.DriverId.Value);
+            var exists = await cmd.ExecuteScalarAsync();
+            if (exists is null)
+                ModelState.AddModelError(nameof(AdminUserUpsertViewModel.DriverId), "DriverId không tồn tại trong bảng Drivers.");
+        }
+    }
+
+    private static async Task<int> CreateCustomerRecordAsync(
+        NpgsqlConnection conn,
+        NpgsqlTransaction tx,
+        AdminUserUpsertViewModel model)
+    {
+        const string sql = @"
+INSERT INTO Customers (FullName, Phone, Email)
+VALUES (@name, @phone, @email)
+RETURNING CustomerID";
+
+        await using var cmd = new NpgsqlCommand(sql, conn, tx);
+        cmd.Parameters.AddWithValue("@name", model.Name?.Trim() ?? string.Empty);
+        cmd.Parameters.AddWithValue("@phone", model.Phone?.Trim() ?? string.Empty);
+        cmd.Parameters.AddWithValue("@email", model.Email.Trim());
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync());
+    }
+
+    private async Task<bool> SoftDeleteUserAsync(NpgsqlConnection conn, NpgsqlTransaction tx, int userId)
+    {
+        await using (var cmd = new NpgsqlCommand("DELETE FROM AuthRefreshTokens WHERE UserID = @id", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("@id", userId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        var placeholderEmail = $"removed.user{userId}.{Guid.NewGuid():N}@account.invalid";
+        var hashed = _passwords.HashPassword(Guid.NewGuid().ToString("N") + "Aa1!zx9");
+
+        const string sql = @"
+UPDATE Users
+SET Email = @email,
+    Password = @pwd,
+    Name = '(Đã gỡ khỏi hệ thống)',
+    Phone = NULL,
+    IsActive = FALSE,
+    IsDeleted = TRUE
+WHERE UserID = @userId AND NOT COALESCE(IsDeleted, FALSE)";
+
+        await using var cmd2 = new NpgsqlCommand(sql, conn, tx);
+        cmd2.Parameters.AddWithValue("@email", placeholderEmail);
+        cmd2.Parameters.AddWithValue("@pwd", hashed);
+        cmd2.Parameters.AddWithValue("@userId", userId);
+        return await cmd2.ExecuteNonQueryAsync() > 0;
     }
 }

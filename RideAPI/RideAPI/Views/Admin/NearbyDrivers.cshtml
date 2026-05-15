@@ -34,7 +34,7 @@
         </div>
     </div>
     <div style="margin-top:12px;">
-        <div class="field-label">X-User-Latitude fallback</div>
+        <div class="field-label">X-User-Latitude (gửi header, chọn CSDL khu vực)</div>
         <input class="field-input" id="lat" type="number" step="0.000001" value="@defaultLatitude" placeholder="10.8" />
     </div>
     <div class="tool-actions">
@@ -118,12 +118,30 @@
             return;
         }
 
+        const latNum = Number(latitude);
+        const lngNum = Number(longitude);
+        if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)
+            || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+            AdminApi.showToast('Vĩ độ (−90…90) hoặc kinh độ (−180…180) không hợp lệ.', 'error');
+            return;
+        }
+
+        const shardRaw = (lat || latitude).trim();
+        const shardNum = Number(shardRaw);
+        if (!Number.isFinite(shardNum) || shardNum < -90 || shardNum > 90) {
+            AdminApi.showToast('X-User-Latitude phải từ −90 đến 90 (dùng cùng vĩ độ tìm kiếm nếu không chắc).', 'error');
+            return;
+        }
+
         const url = `/api/drivers/nearby?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&radiusKm=${encodeURIComponent(radiusKm)}&limit=${encodeURIComponent(limit)}&lat=${encodeURIComponent(lat)}`;
         setLoading();
         AdminApi.setBusy(btn, true, 'Đang tìm...');
 
         try {
-            const data = await AdminApi.fetchJson(url, { method: 'GET' });
+            const data = await AdminApi.fetchJson(url, {
+                method: 'GET',
+                headers: { 'X-User-Latitude': shardRaw }
+            });
             statusEl.textContent = 'Trạng thái: Thành công';
 
             if (!Array.isArray(data) || data.length === 0) {

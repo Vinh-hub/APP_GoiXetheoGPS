@@ -41,7 +41,11 @@ public partial class LoginPage : ContentPage
             var result = await _authApiService.LoginAsync(email, password);
             if (result is null || string.IsNullOrWhiteSpace(result.Token))
             {
-                await AppAlertService.ShowAsync(this, "Đăng nhập", "Email hoặc mật khẩu không chính xác.");
+                // Lỗi mạng / body rỗng / deserialize lệch — không đồng nhất với “sai mật khẩu” (401 thường ném exception kèm message từ API).
+                var hint = string.IsNullOrWhiteSpace(result?.Message)
+                    ? "Không nhận được phiên đăng nhập. Kiểm tra API đang chạy và thử lại."
+                    : result!.Message;
+                await AppAlertService.ShowAsync(this, "Đăng nhập", hint);
                 return;
             }
 

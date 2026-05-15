@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using APP_GoiXetheoGPS.Models;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace APP_GoiXetheoGPS.Services;
 
@@ -17,8 +18,26 @@ public static class TripDataStore
         Timeout = TimeSpan.FromSeconds(20)
     };
 
-    static readonly AuthSessionService Session = new();
-    static readonly UserLocationService Location = new();
+    static AuthSessionService? _fallbackAuth;
+    static UserLocationService? _fallbackLocation;
+
+    static AuthSessionService ResolveAuth()
+    {
+        var session = MauiProgram.Services?.GetService<AuthSessionService>();
+        if (session is not null)
+            return session;
+
+        return _fallbackAuth ??= new AuthSessionService();
+    }
+
+    static UserLocationService ResolveLocation()
+    {
+        var loc = MauiProgram.Services?.GetService<UserLocationService>();
+        if (loc is not null)
+            return loc;
+
+        return _fallbackLocation ??= new UserLocationService();
+    }
 
     static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -32,31 +51,32 @@ public static class TripDataStore
 
     sealed class TripRowDto
     {
-        [JsonPropertyName("TripID")]
+        // API ASP.NET mặc định camelCase: thuộc tính TripID trên server → JSON "tripID"
+        [JsonPropertyName("tripID")]
         public int? TripId { get; set; }
 
-        [JsonPropertyName("DriverID")]
+        [JsonPropertyName("driverID")]
         public int? DriverId { get; set; }
 
-        [JsonPropertyName("StartLat")]
+        [JsonPropertyName("startLat")]
         public double? StartLat { get; set; }
 
-        [JsonPropertyName("StartLng")]
+        [JsonPropertyName("startLng")]
         public double? StartLng { get; set; }
 
-        [JsonPropertyName("EndLat")]
+        [JsonPropertyName("endLat")]
         public double? EndLat { get; set; }
 
-        [JsonPropertyName("EndLng")]
+        [JsonPropertyName("endLng")]
         public double? EndLng { get; set; }
 
-        [JsonPropertyName("Price")]
+        [JsonPropertyName("price")]
         public decimal? Price { get; set; }
 
-        [JsonPropertyName("PaymentAmount")]
+        [JsonPropertyName("paymentAmount")]
         public decimal? PaymentAmount { get; set; }
 
-        [JsonPropertyName("CreatedAt")]
+        [JsonPropertyName("createdAt")]
         public DateTime? CreatedAt { get; set; }
 
         public string? Id { get; set; }
@@ -66,6 +86,8 @@ public static class TripDataStore
         public string? DriverName { get; set; }
         public string? VehicleInfo { get; set; }
         public decimal PriceVnd { get; set; }
+
+        [JsonPropertyName("status")]
         public string? Status { get; set; }
 
         [JsonPropertyName("sqlNote")]
@@ -144,7 +166,8 @@ public static class TripDataStore
 
     static async Task<List<TripRowDto>?> GetTripsFromAnyEndpointAsync(CancellationToken cancellationToken)
     {
-        var routes = new[] { "/api/rides/history", "/api/rides", "/api/trips", "/api/trip" };
+        var historyRoute = await BuildHistoryRouteAsync(cancellationToken).ConfigureAwait(false);
+        var routes = new[] { historyRoute, "/api/rides", "/api/trips", "/api/trip" };
 
         foreach (var route in routes)
         {
@@ -153,7 +176,7 @@ public static class TripDataStore
                 using var request = await CreateGetRequestAsync(route, cancellationToken).ConfigureAwait(false);
                 using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                    Session.Clear();
+                    ResolveAuth().Clear();
                 if (!response.IsSuccessStatusCode)
                     continue;
 
@@ -171,10 +194,20 @@ public static class TripDataStore
         return null;
     }
 
+    static async Task<string> BuildHistoryRouteAsync(CancellationToken cancellationToken)
+    {
+        const string path = "/api/rides/history";
+        var latitude = await ResolveLocation().GetCurrentLatitudeAsync(cancellationToken).ConfigureAwait(false);
+        if (!latitude.HasValue)
+            return path;
+
+        return $"{path}?latitude={Uri.EscapeDataString(latitude.Value.ToString(CultureInfo.InvariantCulture))}";
+    }
+
     static async Task<TripHistoryItem?> FindByIdFromAnyEndpointAsync(string id, CancellationToken cancellationToken)
     {
         var encodedId = Uri.EscapeDataString(id);
-        var latitude = await Location.GetCurrentLatitudeAsync(cancellationToken).ConfigureAwait(false);
+        var latitude = await ResolveLocation().GetCurrentLatitudeAsync(cancellationToken).ConfigureAwait(false);
         var latQuery = (latitude ?? 10.8).ToString(CultureInfo.InvariantCulture);
 
         var routes = new[]
@@ -193,7 +226,7 @@ public static class TripDataStore
                 using var request = await CreateGetRequestAsync(route, cancellationToken).ConfigureAwait(false);
                 using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                    Session.Clear();
+                    ResolveAuth().Clear();
                 if (!response.IsSuccessStatusCode)
                     continue;
 
@@ -308,12 +341,13 @@ public static class TripDataStore
     {
         var request = new HttpRequestMessage(HttpMethod.Get, WebApiServerConfig.BuildUrl(route));
 
-        await Session.RestoreAsync().ConfigureAwait(false);
-        var token = Session.AccessToken;
+        var session = ResolveAuth();
+        await session.RestoreAsync().ConfigureAwait(false);
+        var token = session.AccessToken;
         if (!string.IsNullOrWhiteSpace(token))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var latitude = await Location.GetCurrentLatitudeAsync(cancellationToken).ConfigureAwait(false);
+        var latitude = await ResolveLocation().GetCurrentLatitudeAsync(cancellationToken).ConfigureAwait(false);
         if (latitude.HasValue)
             request.Headers.TryAddWithoutValidation("X-User-Latitude", latitude.Value.ToString(CultureInfo.InvariantCulture));
 

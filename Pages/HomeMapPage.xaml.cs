@@ -16,6 +16,7 @@ namespace APP_GoiXetheoGPS.Pages
         private static readonly HttpClient Http = new();
         private readonly RideApiService _rideApiService;
         private readonly DriverApiService _driverApiService;
+        private readonly UserLocationService _userLocationService;
 
         // Trạng thái chọn loại điểm hiện tại (đón / đến) khi người dùng chạm bản đồ.
         private bool _placingPickup = true;
@@ -50,6 +51,7 @@ namespace APP_GoiXetheoGPS.Pages
 
             _rideApiService = services.GetRequiredService<RideApiService>();
             _driverApiService = services.GetRequiredService<DriverApiService>();
+            _userLocationService = services.GetRequiredService<UserLocationService>();
         }
 
         private void BtnPickup_OnClicked(object? sender, EventArgs e)
@@ -641,11 +643,13 @@ namespace APP_GoiXetheoGPS.Pages
                 BookRideButton.IsEnabled = false;
                 BookRideButton.Text = "Đang đặt...";
 
-                var nearbyDrivers = await _driverApiService.GetNearbyDriversAsync(pickupLat, pickupLng, radiusKm: 10, limit: 1);
-                var selectedDriver = nearbyDrivers.FirstOrDefault();
+                var regionLat = await _userLocationService.GetCurrentLatitudeAsync();
+                var shardLat = regionLat ?? pickupLat;
+                var shardLng = pickupLng;
+                var selectedDriver = await _driverApiService.GetRandomDriverForBookingAsync(shardLat, shardLng);
                 if (selectedDriver is null)
                 {
-                    await DisplayAlertAsync("Đặt chuyến", "Không tìm thấy tài xế gần bạn. Vui lòng thử lại sau.", "OK");
+                    await DisplayAlertAsync("Đặt chuyến", "Không có tài xế khả dụng trong miền này. Vui lòng thử lại sau.", "OK");
                     return;
                 }
 
